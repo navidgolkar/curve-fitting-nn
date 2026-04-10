@@ -32,13 +32,23 @@ class LayerInfo:
         default_factory=lambda: (lambda j, n_in: list(range(n_in)))
     )
     extra_srcs : list[tuple[int, list[int]]] = field(default_factory=list)
+    
+def extract_layer_weights(model):
+    """Extract weights from Linear and Conv1d layers."""
+    weights = []
+    for module in model.modules():
+        if isinstance(module, nn.Linear):
+            weights.append(module.weight.detach().cpu().numpy())
+        elif isinstance(module, nn.Conv1d):
+            w = module.weight.detach().cpu().numpy()
+            weights.append(w.mean(axis=2))  # average kernel dimension
+    return weights
 
 
 # ── Connectivity factories ─────────────────────────────────────────────
 def full_connectivity(j: int, n_in: int) -> list[int]:
     """Every output node connects to every input node (Linear layers)."""
     return list(range(n_in))
-
 
 def conv1d_connectivity(kernel_size: int, padding: int, stride: int
                         ) -> Callable[[int, int], list[int]]:
@@ -58,7 +68,6 @@ def conv1d_connectivity(kernel_size: int, padding: int, stride: int
                 srcs.append(src)
         return srcs
     return _conn
-
 
 # ── Model introspection ───────────────────────────────────────────────
 def _subtitle_from_layers(infos: list[LayerInfo]) -> str:
@@ -88,19 +97,28 @@ def introspect_model(model: nn.Module) -> tuple[list[LayerInfo], str]:
     Walk a model's direct children (and their children for named sub-modules)
     and build a list of LayerInfo objects for draw_graph.
 
-    Supported layer types (auto-detected):
-        nn.Linear   -> full fan-in
-        nn.Conv1d   -> kernel-sparse fan-in using actual kernel/padding/stride
-        (Activation / BatchNorm / Dropout are skipped — they don't add columns.)
+    If the model implements graph_layers() -> list[LayerInfo], that is used
+    directly and generic introspection is skipped entirely.  This is the
+    preferred path for custom architectures (DenseHNN, ConvHNN, etc.) that
+    cannot be faithfully described by walking named_children alone.
 
-    For architectures that expose skip connections through a known attribute
-    (e.g. model.highway or model.dense_connections), those are wired as
-    extra_srcs on the target layer.
+    Generic fallback supports:
+        nn.Linear      -> full fan-in column
+        nn.Conv1d      -> kernel-sparse column (actual kernel/padding/stride)
+        nn.Sequential  -> recursed
+        nn.ModuleList  -> recursed (each element processed in order)
+        Activations / BN / Dropout -> skipped (no new column)
 
     Returns:
         layers_info : list[LayerInfo]  (includes the input stub at index 0)
         subtitle    : str
     """
+    # ── Model-defined override (preferred for custom architectures) ────
+    if hasattr(model, "graph_layers"):
+        infos = model.graph_layers()
+        return infos, _subtitle_from_layers(infos)
+
+    # ── Generic introspection ──────────────────────────────────────────
     layers_info: list[LayerInfo] = [
         LayerInfo(n_nodes=1, label="in", connectivity=full_connectivity)
     ]
@@ -108,73 +126,45 @@ def introspect_model(model: nn.Module) -> tuple[list[LayerInfo], str]:
     conv_count = 0
     fc_count   = 0
 
-    def _process_sequential(seq: nn.Sequential) -> None:
+    def _process_module(mod: nn.Module) -> None:
         nonlocal conv_count, fc_count
-        for layer in seq.children():
-            if isinstance(layer, nn.Conv1d):
-                conv_count += 1
-                k = layer.kernel_size[0]
-                p = layer.padding[0] if isinstance(layer.padding, tuple) else layer.padding
-                s = layer.stride[0]  if isinstance(layer.stride,  tuple) else layer.stride
-                label = (
-                    f"conv{conv_count}\n{layer.out_channels}n\n"
-                    f"k={k}k\np={p}\ns={s}"
-                )
-                # When in_channels==1 the previous layer is the input stub:
-                # every output channel connects to that single input node (fan-out).
-                # When out_channels==1 every input channel feeds the single output (fan-in).
-                # Both cases are fully connected; only many→many uses sparse conv connectivity.
-                if layer.in_channels == 1 or layer.out_channels == 1:
-                    conn = full_connectivity
-                else:
-                    conn = conv1d_connectivity(k, p, s)
-                layers_info.append(LayerInfo(
-                    n_nodes=layer.out_channels,
-                    label=label,
-                    connectivity=conn,
-                ))
-            elif isinstance(layer, nn.Linear):
-                fc_count += 1
-                label = f"fc{fc_count}\n{layer.out_features}n"
-                layers_info.append(LayerInfo(
-                    n_nodes=layer.out_features,
-                    label=label,
-                    connectivity=full_connectivity,
-                ))
-            elif isinstance(layer, nn.Sequential):
-                _process_sequential(layer)
-            # Activations, BN, Dropout → skip (no new column)
-
-    # ── Walk top-level named sub-modules in declaration order ─────────
-    for name, child in model.named_children():
-        if isinstance(child, nn.Sequential):
-            _process_sequential(child)
-        elif isinstance(child, nn.Conv1d):
-            # bare Conv1d head (e.g. CNN.head)
-            k = child.kernel_size[0]
-            p = child.padding[0] if isinstance(child.padding, tuple) else child.padding
-            s = child.stride[0]  if isinstance(child.stride,  tuple) else child.stride
-            label = f"out\n1n\n{k}"
-            # out_channels==1: channel-reduction head — every input channel feeds
-            # the single output node, so this is fully connected over channels.
-            # in_channels==1: fan-out from single input, also fully connected.
-            if child.in_channels == 1 or child.out_channels == 1:
+        if isinstance(mod, nn.Conv1d):
+            conv_count += 1
+            k = mod.kernel_size[0]
+            p = mod.padding[0] if isinstance(mod.padding, tuple) else mod.padding
+            s = mod.stride[0]  if isinstance(mod.stride,  tuple) else mod.stride
+            label = f"conv{conv_count}\n{mod.out_channels}n\nk={k} p={p} s={s}"
+            if mod.in_channels == 1 or mod.out_channels == 1:
                 conn = full_connectivity
             else:
                 conn = conv1d_connectivity(k, p, s)
-            layers_info.append(LayerInfo(
-                n_nodes=child.out_channels,
-                label=label,
-                connectivity=conn,
-            ))
-        elif isinstance(child, nn.Linear):
+            layers_info.append(LayerInfo(n_nodes=mod.out_channels,
+                                         label=label, connectivity=conn))
+        elif isinstance(mod, nn.Linear):
             fc_count += 1
-            label = f"fc{fc_count}\n{child.out_features}n"
-            layers_info.append(LayerInfo(
-                n_nodes=child.out_features,
-                label=label,
-                connectivity=full_connectivity,
-            ))
+            label = f"fc{fc_count}\n{mod.out_features}n"
+            layers_info.append(LayerInfo(n_nodes=mod.out_features,
+                                         label=label,
+                                         connectivity=full_connectivity))
+        elif isinstance(mod, (nn.Sequential, nn.ModuleList)):
+            for child in mod.children():
+                _process_module(child)
+        # Activations, BN, Dropout, custom layers without Linear/Conv1d → skip
+
+    # ── Walk top-level named sub-modules in declaration order ─────────
+    for name, child in model.named_children():
+        if isinstance(child, nn.Conv1d):
+            # bare Conv1d (e.g. CNN.head)
+            k = child.kernel_size[0]
+            p = child.padding[0] if isinstance(child.padding, tuple) else child.padding
+            s = child.stride[0]  if isinstance(child.stride,  tuple) else child.stride
+            label = f"out\n1n\nk={k}"
+            conn  = full_connectivity if (child.in_channels == 1 or child.out_channels == 1) \
+                    else conv1d_connectivity(k, p, s)
+            layers_info.append(LayerInfo(n_nodes=child.out_channels,
+                                         label=label, connectivity=conn))
+        else:
+            _process_module(child)
 
     # ── Ensure output stub exists ──────────────────────────────────────
     if layers_info[-1].label != "out" and layers_info[-1].n_nodes != 1:
@@ -207,7 +197,12 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
     ax.set_facecolor("#F5F5F5")
 
     layers_info, subtitle = introspect_model(model)
-
+    weights = extract_layer_weights(model)
+    layer_weight_idx = 0
+    max_weight = max(
+        np.max(np.abs(w)) for w in weights
+    ) if weights else 1.0
+        
     n_cols = len(layers_info)
     x_pos  = np.linspace(0, (n_cols - 1) * 3, n_cols)
 
@@ -226,16 +221,32 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
         ys_out   = y_coords(info_out.n_nodes)
         n_in     = n_shown(info_in.n_nodes)
         n_out    = n_shown(info_out.n_nodes)
-
+        
+        weight_matrix = None
+        if layer_weight_idx < len(weights):
+            weight_matrix = weights[layer_weight_idx]
+            layer_weight_idx += 1
+        
         for j in range(n_out):
             srcs = info_out.connectivity(j, n_in)
             for src in srcs:
                 if 0 <= src < n_in:
+                    color = "#000000"
+                    alpha = 0.5
+                    if weight_matrix is not None:
+                        try:
+                            w = weight_matrix[j, src]
+                            alpha = abs(w)/max_weight
+                            color = "#d62728" if w < 0 else "#1f77b4"
+                        except Exception:
+                            pass
                     ax.plot(
-                        [x_pos[li - 1], x_pos[li]],
-                        [ys_in[src],    ys_out[j]],
-                        color="#000000", lw=1, alpha=0.8, zorder=1,
-                    )
+                    [x_pos[li - 1], x_pos[li]],
+                    [ys_in[src], ys_out[j]],
+                    color=color,
+                    lw=1,
+                    alpha=alpha,
+                    zorder=1)
 
     # ── Edges (skip / residual connections) ───────────────────────────
     for li, info_out in enumerate(layers_info):

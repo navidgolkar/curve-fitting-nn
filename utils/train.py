@@ -53,7 +53,7 @@ def train_model(
 
         if epoch % log_every == 0 or epoch == 1:
             with torch.no_grad():
-                y_pred = model(x).squeeze().numpy()
+                y_pred = model(x).squeeze().cpu().numpy()
             snapshots.append((epoch, mse_val, ce_val, y_pred.copy()))
             print(f"Epoch {epoch:>4d}  |  MSE: {mse_val:.6f}  |  CE: {ce_val:.4f}")
 
