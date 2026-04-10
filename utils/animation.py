@@ -4,16 +4,16 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.animation import FuncAnimation
 
-from models import ConvNet as ConvNet
+from utils.models import CNN
 
 # ── graph helper ──────────────────────────────────────────────────────
 def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None:
     """
     Draw the network architecture on ax using a custom matplotlib renderer.
  
-    Works for both DenseNet (fully-connected) and ConvNet (kernel-sparse):
-      - DenseNet  : every node in layer N connects to every node in N+1.
-      - ConvNet   : each output node j connects only to input nodes
+    Works for both FCNN (fully-connected) and CNN (kernel-sparse):
+      - FCNN  : every node in layer N connects to every node in N+1.
+      - CNN   : each output node j connects only to input nodes
                     j-1, j, j+1  (kernel=3, padding=1 receptive field).
  
     Layers with more nodes than ellipsize_after display the first
@@ -23,7 +23,7 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
     ax.axis("off")
     ax.set_facecolor("#F5F5F5")
  
-    is_conv = isinstance(model, ConvNet)
+    is_conv = isinstance(model, CNN)
  
     # ── Collect (size, kernel) per layer ──────────────────────────────
     # Each entry: (n_nodes, kernel_radius)

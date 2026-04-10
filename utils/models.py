@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import copy
 
-# ── DenseNet ──────────────────────────────────────────────────────────
-class DenseNet(nn.Module):
+# ── Fully Connected Neural Network ──────────────────────────────────────────────────────────
+class FCNN(nn.Module):
     """
     Fully-connected neural network for 1-D regression.
  
@@ -28,8 +28,8 @@ class DenseNet(nn.Module):
         return self.net(x)
 
 
-# ── ConvNet ───────────────────────────────────────────────────────────
-class ConvNet(nn.Module):
+# ── Convolutional Neural Network ───────────────────────────────────────────────────────────
+class CNN(nn.Module):
     """
     1-D convolutional neural network for sequence regression.
 
