@@ -165,8 +165,8 @@ def make_animation(
 
     # ── Top-left: curve fit ───────────────────────────────────────────
     ax_fit.scatter(x_np, y_np, s=8, alpha=0.4, color="#aaaaaa", label="Data", zorder=1)
-    ax_fit.set_xlim(-3.2, 3.2)
-    ax_fit.set_ylim(-1.8, 1.8)
+    ax_fit.set_xlim(np.min(x_np)*1.2, np.max(x_np)*1.2)
+    ax_fit.set_ylim(np.min(y_np)*1.2, np.max(y_np)*1.2)
     ax_fit.set_xlabel("x")
     ax_fit.set_ylabel("y")
     ax_fit.set_title("Curve fit")

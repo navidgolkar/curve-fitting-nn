@@ -8,14 +8,17 @@ from models import ConvNet
 from animation import make_animation
 from train import train_model
 
+def test_func(x):
+    return x*np.sin(x)+np.cos(x)
+
 # ── Main ──────────────────────────────────────────────────────────────
 if __name__ == "__main__":
 
     # ── Shared config ─────────────────────────────────────────────────
-    H_N       = 2               # number of hidden / conv layers
-    N_N       = 20              # nodes per dense layer / filters per conv layer
-    FUNC      = nn.Tanh()       # activation: nn.Tanh() | nn.ReLU() | nn.SiLU() | etc.
-    EPOCHS    = 2000
+    H_N       = 3               # number of hidden / conv layers
+    N_N       = 15              # nodes per dense layer / filters per conv layer
+    FUNC      = nn.Tanh()       # activation: nn.Tanh() | nn.ReLU() | nn.Sigmoid | nn.Softplus | nn.Softshrink | nn.Softsign | nn.Mish | etc.
+    EPOCHS    = 5000
     LR        = 1e-3
     LOG_EVERY = 50              # snapshot + print interval
     K_SIZE    = 3
@@ -25,7 +28,7 @@ if __name__ == "__main__":
 
     # ── Synthetic data (non-uniform Gaussian noise) ───────────────────
     x_np      = np.linspace(-3, 3, 200).astype(np.float32)
-    y_np      = (np.sin(x_np) + 0.3 * np.random.randn(*x_np.shape)).astype(np.float32)
+    y_np      = (test_func(x_np) + 0.3 * np.random.randn(*x_np.shape)).astype(np.float32)
 
     x = torch.tensor(x_np).unsqueeze(1)   # (200, 1)
     y = torch.tensor(y_np).unsqueeze(1)   # (200, 1)
@@ -74,9 +77,9 @@ if __name__ == "__main__":
         y_np         = y_np,
         epochs       = EPOCHS,
         title        = f"ConvNet — {H_N} conv layers × {N_N} filters  [{act_name}]",
-        pred_color   = "#0d9e6e",
-        mse_color    = "#e0a02e",
-        ce_color     = "#e05c2e",
+        pred_color   = "#e05c2e",
+        mse_color    = "#2e7de0",
+        ce_color     = "#7c3aed",
     )
     print("Saving convnet_training.gif …")
     ani_conv.save("convnet_training.gif", writer="pillow", fps=15)
