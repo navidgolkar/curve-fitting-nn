@@ -3,97 +3,271 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.animation import FuncAnimation
+from dataclasses import dataclass, field
+from typing import Callable
 
-from utils.models import CNN
 
-# ── graph helper ──────────────────────────────────────────────────────
+# ── LayerInfo ─────────────────────────────────────────────────────────
+@dataclass
+class LayerInfo:
+    """
+    Describes one layer's visual representation in the graph.
+
+    Attributes:
+        n_nodes        : number of nodes (channels / features) in this layer.
+        label          : short string shown below the column, e.g. "conv1\n15ch".
+        connectivity   : callable(j: int, n_in: int) -> list[int]
+                         Given output-node index j and the display-width of the
+                         previous layer, return the list of source node indices
+                         that j connects from.  Return range(n_in) for full
+                         fan-in (Linear, input stub), or a sparse list for
+                         Conv1d with arbitrary kernel / stride / padding.
+        extra_srcs     : additional (layer_offset, [src_indices]) pairs used by
+                         skip-connection architectures (Highway, DenseNet).
+                         layer_offset is negative: -1 = layer before previous, etc.
+    """
+    n_nodes    : int
+    label      : str
+    connectivity: Callable[[int, int], list[int]] = field(
+        default_factory=lambda: (lambda j, n_in: list(range(n_in)))
+    )
+    extra_srcs : list[tuple[int, list[int]]] = field(default_factory=list)
+
+
+# ── Connectivity factories ─────────────────────────────────────────────
+def full_connectivity(j: int, n_in: int) -> list[int]:
+    """Every output node connects to every input node (Linear layers)."""
+    return list(range(n_in))
+
+
+def conv1d_connectivity(kernel_size: int, padding: int, stride: int
+                        ) -> Callable[[int, int], list[int]]:
+    """
+    Returns a connectivity function that reflects the actual receptive field
+    of a Conv1d layer with the given kernel_size, padding, and stride.
+
+    For output node j the input positions are:
+        src = j * stride - padding + k   for k in range(kernel_size)
+    Only positions in [0, n_in) are kept (boundary clamping = no padding nodes).
+    """
+    def _conn(j: int, n_in: int) -> list[int]:
+        srcs = []
+        for k in range(kernel_size):
+            src = j * stride - padding + k
+            if 0 <= src < n_in:
+                srcs.append(src)
+        return srcs
+    return _conn
+
+
+# ── Model introspection ───────────────────────────────────────────────
+def _subtitle_from_layers(infos: list[LayerInfo]) -> str:
+    """Build a compact subtitle string from layer types present."""
+    parts: list[str] = []
+    seen_conv  = False
+    seen_fc    = False
+    seen_skip  = False
+    for info in infos[1:]:          # skip input stub
+        if info.extra_srcs:
+            seen_skip = True
+        if "conv" in info.label:
+            seen_conv = True
+        elif "fc" in info.label or "out" in info.label:
+            seen_fc = True
+    if seen_conv:
+        parts.append("conv")
+    if seen_fc:
+        parts.append("fully connected")
+    if seen_skip:
+        parts.append("skip connections")
+    return "  |  ".join(parts) if parts else "custom"
+
+
+def introspect_model(model: nn.Module) -> tuple[list[LayerInfo], str]:
+    """
+    Walk a model's direct children (and their children for named sub-modules)
+    and build a list of LayerInfo objects for draw_graph.
+
+    Supported layer types (auto-detected):
+        nn.Linear   -> full fan-in
+        nn.Conv1d   -> kernel-sparse fan-in using actual kernel/padding/stride
+        (Activation / BatchNorm / Dropout are skipped — they don't add columns.)
+
+    For architectures that expose skip connections through a known attribute
+    (e.g. model.highway or model.dense_connections), those are wired as
+    extra_srcs on the target layer.
+
+    Returns:
+        layers_info : list[LayerInfo]  (includes the input stub at index 0)
+        subtitle    : str
+    """
+    layers_info: list[LayerInfo] = [
+        LayerInfo(n_nodes=1, label="in", connectivity=full_connectivity)
+    ]
+
+    conv_count = 0
+    fc_count   = 0
+
+    def _process_sequential(seq: nn.Sequential) -> None:
+        nonlocal conv_count, fc_count
+        for layer in seq.children():
+            if isinstance(layer, nn.Conv1d):
+                conv_count += 1
+                k = layer.kernel_size[0]
+                p = layer.padding[0] if isinstance(layer.padding, tuple) else layer.padding
+                s = layer.stride[0]  if isinstance(layer.stride,  tuple) else layer.stride
+                label = (
+                    f"conv{conv_count}\n{layer.out_channels}n\n"
+                    f"k={k}k\np={p}\ns={s}"
+                )
+                # When in_channels==1 the previous layer is the input stub:
+                # every output channel connects to that single input node (fan-out).
+                # When out_channels==1 every input channel feeds the single output (fan-in).
+                # Both cases are fully connected; only many→many uses sparse conv connectivity.
+                if layer.in_channels == 1 or layer.out_channels == 1:
+                    conn = full_connectivity
+                else:
+                    conn = conv1d_connectivity(k, p, s)
+                layers_info.append(LayerInfo(
+                    n_nodes=layer.out_channels,
+                    label=label,
+                    connectivity=conn,
+                ))
+            elif isinstance(layer, nn.Linear):
+                fc_count += 1
+                label = f"fc{fc_count}\n{layer.out_features}n"
+                layers_info.append(LayerInfo(
+                    n_nodes=layer.out_features,
+                    label=label,
+                    connectivity=full_connectivity,
+                ))
+            elif isinstance(layer, nn.Sequential):
+                _process_sequential(layer)
+            # Activations, BN, Dropout → skip (no new column)
+
+    # ── Walk top-level named sub-modules in declaration order ─────────
+    for name, child in model.named_children():
+        if isinstance(child, nn.Sequential):
+            _process_sequential(child)
+        elif isinstance(child, nn.Conv1d):
+            # bare Conv1d head (e.g. CNN.head)
+            k = child.kernel_size[0]
+            p = child.padding[0] if isinstance(child.padding, tuple) else child.padding
+            s = child.stride[0]  if isinstance(child.stride,  tuple) else child.stride
+            label = f"out\n1n\n{k}"
+            # out_channels==1: channel-reduction head — every input channel feeds
+            # the single output node, so this is fully connected over channels.
+            # in_channels==1: fan-out from single input, also fully connected.
+            if child.in_channels == 1 or child.out_channels == 1:
+                conn = full_connectivity
+            else:
+                conn = conv1d_connectivity(k, p, s)
+            layers_info.append(LayerInfo(
+                n_nodes=child.out_channels,
+                label=label,
+                connectivity=conn,
+            ))
+        elif isinstance(child, nn.Linear):
+            fc_count += 1
+            label = f"fc{fc_count}\n{child.out_features}n"
+            layers_info.append(LayerInfo(
+                n_nodes=child.out_features,
+                label=label,
+                connectivity=full_connectivity,
+            ))
+
+    # ── Ensure output stub exists ──────────────────────────────────────
+    if layers_info[-1].label != "out" and layers_info[-1].n_nodes != 1:
+        layers_info.append(LayerInfo(
+            n_nodes=1, label="out", connectivity=full_connectivity
+        ))
+
+    subtitle = _subtitle_from_layers(layers_info)
+    return layers_info, subtitle
+
+
+# ── draw_graph ────────────────────────────────────────────────────────
 def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None:
     """
-    Draw the network architecture on ax using a custom matplotlib renderer.
- 
-    Works for both FCNN (fully-connected) and CNN (kernel-sparse):
-      - FCNN  : every node in layer N connects to every node in N+1.
-      - CNN   : each output node j connects only to input nodes
-                    j-1, j, j+1  (kernel=3, padding=1 receptive field).
- 
-    Layers with more nodes than ellipsize_after display the first
-    (ellipsize_after-1) nodes plus one grey ellipsis node.
+    Draw the network architecture on *ax*.
+
+    Architecture-agnostic: works for FCNN, CNN (arbitrary kernel/padding/stride),
+    Highway networks, DenseNets, or any hybrid — as long as the model is composed
+    of nn.Linear and/or nn.Conv1d layers arranged in nn.Sequential sub-modules
+    (the standard PyTorch idiom).
+
+    Connectivity is derived directly from each layer's actual attributes
+    (kernel_size, padding, stride) rather than hard-coded assumptions.
+
+    Layers with more nodes than *ellipsize_after* show the first
+    (ellipsize_after-1) nodes plus a grey ellipsis marker.
     """
     ax.set_aspect("equal")
     ax.axis("off")
     ax.set_facecolor("#F5F5F5")
- 
-    is_conv = isinstance(model, CNN)
- 
-    # ── Collect (size, kernel) per layer ──────────────────────────────
-    # Each entry: (n_nodes, kernel_radius)
-    # kernel_radius=0  -> fully connected  (Linear / input)
-    # kernel_radius=1  -> kernel=3         (Conv1d with padding=1)
-    layers_info: list[tuple[int, int]] = []
- 
-    if is_conv:
-        layers_info.append((1, 0))                        # input channel
-        for layer in model.conv.children():
-            if isinstance(layer, nn.Conv1d):
-                layers_info.append((layer.out_channels, layer.kernel_size[0] // 2))
-        layers_info.append((1, 0))                        # head output
-        subtitle = "kernel=3, stride=1, padding=1"
-    else:
-        layers_info.append((1, 0))                        # input feature
-        for layer in model.net.children():
-            if isinstance(layer, nn.Linear):
-                layers_info.append((layer.out_features, 0))
-        subtitle = "fully connected"
- 
-    # ── Layout ────────────────────────────────────────────────────────
+
+    layers_info, subtitle = introspect_model(model)
+
     n_cols = len(layers_info)
-    x_pos  = np.linspace(0, (n_cols - 1) * 2.2, n_cols)
- 
+    x_pos  = np.linspace(0, (n_cols - 1) * 3, n_cols)
+
     def n_shown(ch: int) -> int:
         return min(ch, ellipsize_after)
- 
+
     def y_coords(ch: int) -> np.ndarray:
         n = n_shown(ch)
         return np.linspace(-(n - 1) / 2, (n - 1) / 2, n)
- 
-    # ── Edges ─────────────────────────────────────────────────────────
+
+    # ── Edges (primary connections) ───────────────────────────────────
     for li in range(1, n_cols):
-        ch_in,  _       = layers_info[li - 1]
-        ch_out, half_k  = layers_info[li]
-        ys_in  = y_coords(ch_in)
-        ys_out = y_coords(ch_out)
-        n_in   = n_shown(ch_in)
-        n_out  = n_shown(ch_out)
- 
+        info_in  = layers_info[li - 1]
+        info_out = layers_info[li]
+        ys_in    = y_coords(info_in.n_nodes)
+        ys_out   = y_coords(info_out.n_nodes)
+        n_in     = n_shown(info_in.n_nodes)
+        n_out    = n_shown(info_out.n_nodes)
+
         for j in range(n_out):
-            if half_k == 0 or ch_in == 1:
-                # Fully connected: single input node always fans out to all outputs
-                src_range = range(n_in)
-            else:
-                # Kernel-sparse: j connects to j-half_k … j+half_k
-                src_range = range(
-                    max(0, j - half_k),
-                    min(ch_in, j + half_k + 1),
-                )
-                src_range = [s for s in src_range if s < n_in]
- 
-            for src in src_range:
-                ax.plot(
-                    [x_pos[li - 1], x_pos[li]],
-                    [ys_in[src], ys_out[j]],
-                    color="#999999", lw=0.6, alpha=0.45, zorder=1,
-                )
- 
+            srcs = info_out.connectivity(j, n_in)
+            for src in srcs:
+                if 0 <= src < n_in:
+                    ax.plot(
+                        [x_pos[li - 1], x_pos[li]],
+                        [ys_in[src],    ys_out[j]],
+                        color="#000000", lw=1, alpha=0.8, zorder=1,
+                    )
+
+    # ── Edges (skip / residual connections) ───────────────────────────
+    for li, info_out in enumerate(layers_info):
+        for layer_offset, skip_srcs in info_out.extra_srcs:
+            src_li = li + layer_offset          # layer_offset is negative
+            if src_li < 0:
+                continue
+            info_skip = layers_info[src_li]
+            ys_skip   = y_coords(info_skip.n_nodes)
+            ys_out    = y_coords(info_out.n_nodes)
+            n_skip    = n_shown(info_skip.n_nodes)
+            for j, src in enumerate(skip_srcs):
+                if 0 <= src < n_skip and j < n_shown(info_out.n_nodes):
+                    ax.annotate(
+                        "", xy=(x_pos[li], ys_out[j]),
+                        xytext=(x_pos[src_li], ys_skip[src]),
+                        arrowprops=dict(
+                            arrowstyle="->", color="#999999",
+                            lw=1, alpha=0.8, connectionstyle="arc3,rad=0.35",
+                        ),
+                        zorder=1,
+                    )
+
     # ── Nodes ─────────────────────────────────────────────────────────
-    node_r = 0.18
-    dot_r  = 0.06   # radius of each small ellipsis dot
-    for li, (ch, _) in enumerate(layers_info):
-        ys            = y_coords(ch)
-        is_ellipsized = ch > ellipsize_after
+    node_r = 0.22
+    dot_r  = 0.06
+    for li, info in enumerate(layers_info):
+        ys            = y_coords(info.n_nodes)
+        is_ellipsized = info.n_nodes > ellipsize_after
         for i, y in enumerate(ys):
             is_dots = is_ellipsized and i == len(ys) - 1
             if is_dots:
-                # Draw three small black dots stacked vertically
                 spacing = node_r * 0.9
                 for dy in (-spacing, 0, spacing):
                     ax.add_patch(plt.Circle(
@@ -106,28 +280,20 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
                     facecolor="#5B9BD5", zorder=2,
                     linewidth=0.8, edgecolor="white",
                 ))
- 
+
     # ── Column labels ─────────────────────────────────────────────────
-    max_shown = max(n_shown(ch) for ch, _ in layers_info)
+    max_shown = max(n_shown(info.n_nodes) for info in layers_info)
     y_bot     = -(max_shown / 2) - 0.9
- 
-    if is_conv:
-        labels = ["in"] + [
-            f"conv{i+1}\n{ch}ch" for i, (ch, _) in enumerate(layers_info[1:-1])
-        ] + ["out"]
-    else:
-        labels = ["in"] + [
-            f"fc{i+1}\n{ch}" for i, (ch, _) in enumerate(layers_info[1:-1])
-        ] + ["out"]
- 
-    for li, label in enumerate(labels):
-        ax.text(x_pos[li], y_bot, label, ha="center", va="top",
-                fontsize=7, color="#444444")
- 
+
+    for li, info in enumerate(layers_info):
+        ax.text(x_pos[li], y_bot, info.label,
+                ha="center", va="top", fontsize=7, color="#444444")
+
     ax.set_title(f"Network graph  ({subtitle})", fontsize=8, pad=4)
     margin = 0.8
     ax.set_xlim(x_pos[0] - margin, x_pos[-1] + margin)
     ax.set_ylim(y_bot - 0.2, max_shown / 2 + margin)
+
 
 # ── Animation factory ─────────────────────────────────────────────────
 def make_animation(
@@ -146,32 +312,31 @@ def make_animation(
     """
     Build a 2x2 animated figure:
         [top-left]     curve fit (animated)
-        [top-right]    network graph via visualtorch (static)
+        [top-right]    network graph (static)
         [bottom-left]  MSE loss curve (animated)
         [bottom-right] cross-entropy loss curve (animated)
-    
+
     Returns (fig, ani).
     """
-
     epoch_vals = np.arange(1, epochs + 1)
 
     fig = plt.figure(figsize=(14, 10))
     gs  = gridspec.GridSpec(2, 2, figure=fig, hspace=0.35, wspace=0.35)
 
-    ax_fit   = fig.add_subplot(gs[0, 0])   # top-left
-    ax_graph = fig.add_subplot(gs[0, 1])   # top-right
-    ax_mse   = fig.add_subplot(gs[1, 0])   # bottom-left
-    ax_ce    = fig.add_subplot(gs[1, 1])   # bottom-right
+    ax_fit   = fig.add_subplot(gs[0, 0])
+    ax_graph = fig.add_subplot(gs[0, 1])
+    ax_mse   = fig.add_subplot(gs[1, 0])
+    ax_ce    = fig.add_subplot(gs[1, 1])
 
     # ── Top-left: curve fit ───────────────────────────────────────────
     ax_fit.scatter(x_np, y_np, s=8, alpha=0.4, color="#aaaaaa", label="Data", zorder=1)
-    ax_fit.set_xlim(np.min(x_np)*1.2, np.max(x_np)*1.2)
-    ax_fit.set_ylim(np.min(y_np)*1.2, np.max(y_np)*1.2)
+    ax_fit.set_xlim(np.min(x_np) * 1.05, np.max(x_np) * 1.05)
+    ax_fit.set_ylim(np.min(y_np) * 1.2, np.max(y_np) * 1.2)
     ax_fit.set_xlabel("x")
     ax_fit.set_ylabel("y")
     ax_fit.set_title("Curve fit")
-    
-    # ── Top-right: network graph (static, rendered once) ─────────────
+
+    # ── Top-right: network graph (static) ────────────────────────────
     draw_graph(ax_graph, model)
 
     # ── Bottom-left: MSE loss ─────────────────────────────────────────
@@ -181,7 +346,7 @@ def make_animation(
     ax_mse.set_xlabel("Epoch")
     ax_mse.set_ylabel("MSE Loss")
     ax_mse.set_title("MSE Loss")
- 
+
     # ── Bottom-right: cross-entropy loss ──────────────────────────────
     ax_ce.set_xlim(1, epochs)
     ax_ce.set_ylim(max(min(ce_losses) * 0.5, 1e-9), max(ce_losses) * 1.1)
@@ -194,13 +359,13 @@ def make_animation(
     (line_pred,) = ax_fit.plot([], [], lw=2, color=pred_color, zorder=2, label="Prediction")
     fit_title    = ax_fit.set_title("")
     ax_fit.legend(loc="upper right", fontsize=8)
- 
+
     (line_mse,) = ax_mse.plot([], [], lw=1.5, color=mse_color)
     dot_mse,    = ax_mse.plot([], [], "o",    color=pred_color, ms=6, zorder=3)
- 
+
     (line_ce,)  = ax_ce.plot([], [], lw=1.5, color=ce_color)
     dot_ce,     = ax_ce.plot([], [], "o",    color=pred_color, ms=6, zorder=3)
- 
+
     fig.suptitle(title, fontsize=13)
     fig.subplots_adjust(top=0.93, hspace=0.35, wspace=0.35)
 

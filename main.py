@@ -29,7 +29,7 @@ if __name__ == "__main__":
     # ──────────────────────────────────────────────────────────────────
 
     # ── Synthetic data (non-uniform Gaussian noise) ───────────────────
-    x_np      = np.linspace(0, 4, INPUT_N).astype(np.float32)
+    x_np      = np.linspace(0, 5, INPUT_N).astype(np.float32)
     y         = test_func(x_np)
     y_np      = (y + np.random.normal(y, scale=NOISE_STD)).astype(np.float32)
 
@@ -87,5 +87,7 @@ if __name__ == "__main__":
     print("Saving CNN_training.gif …")
     ani_conv.save("CNN_training.gif", writer="pillow", fps=15)
     print("Saved  →  CNN_training.gif")
- 
+    
+    for fig in (fig_dense, fig_conv):
+        fig.set_size_inches(9, 6)
     plt.show()
