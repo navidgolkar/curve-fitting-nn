@@ -17,10 +17,11 @@ def train_model(
     Returns:
         snapshots  : list of (epoch, mse, ce, y_pred_np)
         mse_losses : MSE at every epoch
-        ce_losses  : cross-entropy proxy at every epoch
+        ce_losses  : binary cross-entropy proxy at every epoch
     """
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     mse_fn    = nn.MSELoss()
+    ce_fn     = nn.BCEWithLogitsLoss()
 
     snapshots:  list = []
     mse_losses: list = []
@@ -37,18 +38,14 @@ def train_model(
 
         pred = model(x)
         mse  = mse_fn(pred, y)
+        ce   = ce_fn(pred, y)
         mse.backward()
         optimizer.step()
 
         mse_val = mse.item()
         mse_losses.append(mse_val)
-
-        # Cross-entropy proxy: softmax both outputs over the sequence dimension,
-        # then compute KL-style CE: -sum(q * log(p))
-        with torch.no_grad():
-            p      = torch.softmax(pred.squeeze(), dim=0)
-            q      = torch.softmax(y.squeeze(),    dim=0)
-            ce_val = -torch.sum(q * torch.log(p + 1e-9)).item()
+        
+        ce_val = ce.item()
         ce_losses.append(ce_val)
 
         if epoch % log_every == 0 or epoch == 1:
@@ -56,5 +53,5 @@ def train_model(
                 y_pred = model(x).squeeze().cpu().numpy()
             snapshots.append((epoch, mse_val, ce_val, y_pred.copy()))
             print(f"Epoch {epoch:>4d}  |  MSE: {mse_val:.6f}  |  CE: {ce_val:.4f}")
-
+            
     return snapshots, mse_losses, ce_losses
