@@ -14,79 +14,78 @@ class LayerInfo:
     Describes one layer's visual representation in the graph.
 
     Attributes:
-        n_nodes        : number of nodes (channels / features) in this layer.
-        label          : short string shown below the column, e.g. "conv1\n15ch".
-        connectivity   : callable(j: int, n_in: int) -> list[int]
-                         Given output-node index j and the display-width of the
-                         previous layer, return the list of source node indices
-                         that j connects from.  Return range(n_in) for full
-                         fan-in (Linear, input stub), or a sparse list for
-                         Conv1d with arbitrary kernel / stride / padding.
-        extra_srcs     : additional (layer_offset, [src_indices]) pairs used by
-                         skip-connection architectures (Highway, DenseNet).
-                         layer_offset is negative: -1 = layer before previous, etc.
+        n_nodes      : number of nodes (channels / features) in this layer.
+        label        : short string shown below the column.
+        connectivity : callable(j: int, n_in: int) -> list[int]
+                       Given output-node index j and the display-width of the
+                       previous layer, return the list of source node indices
+                       that j connects from.
+        extra_srcs   : list of (src_col_absolute, [src_node_indices]) pairs
+                       for skip / residual connections drawn as curved arrows.
     """
-    n_nodes    : int
-    label      : str
+    n_nodes     : int
+    label       : str
     connectivity: Callable[[int, int], list[int]] = field(
         default_factory=lambda: (lambda j, n_in: list(range(n_in)))
     )
-    extra_srcs : list[tuple[int, list[int]]] = field(default_factory=list)
-    
-def extract_layer_weights(model):
-    """Extract weights from Linear and Conv1d layers."""
+    extra_srcs  : list[tuple[int, list[int]]] = field(default_factory=list)
+
+
+# ── Weight extraction helpers ─────────────────────────────────────────
+def extract_layer_weights(model: nn.Module) -> list:
+    """Extract weights from Linear and Conv1d layers in order."""
     weights = []
     for module in model.modules():
         if isinstance(module, nn.Linear):
             weights.append(module.weight.detach().cpu().numpy())
         elif isinstance(module, nn.Conv1d):
             w = module.weight.detach().cpu().numpy()
-            weights.append(w.mean(axis=2))  # average kernel dimension
+            weights.append(w.mean(axis=2))
     return weights
 
-def extract_skip_weights(model):
-    """
-    Extract weights used in skip connections for DenseHNN and ConvHNN.
 
-    Returns:
-        List of NumPy arrays representing skip weights.
+def extract_skip_weights(model: nn.Module) -> list:
+    """
+    Extract representative weight matrices for skip connections.
+
+    For DenseResNet: each _DenseResLayer.linear has shape (n_n, i*n_n).
+      All columns correspond to the concatenated skip inputs (including the
+      immediate predecessor); we return the full weight matrix as the skip
+      weight proxy.
+    For ConvResNet: the skip is an element-wise sum (no learnable weight),
+      so we return the conv weight of the receiving layer as a proxy.
     """
     skip_weights = []
 
-    for module in model.modules():
-        # Dense Highway Networks
-        if hasattr(module, "H") and hasattr(module, "n_n"):
-            if isinstance(module.H, nn.Linear):
-                w = module.H.weight.detach().cpu().numpy()
-                n = module.n_n
-                # Skip weights correspond to all but the last n_n inputs
-                if w.shape[1] > n:
-                    skip_weights.append(w[:, :-n])
-
-        # Conv Highway Networks
-        if hasattr(module, "conv_H"):
-            conv = module.conv_H
-            if isinstance(conv, nn.Conv1d):
-                w = conv.weight.detach().cpu().numpy()
-                skip_weights.append(w.mean(axis=2))  # Average kernel dimension
+    if hasattr(model, 'layers') and hasattr(model, 'n_n'):
+        n_n = model.n_n
+        for layer in model.layers:
+            if hasattr(layer, 'linear') and isinstance(layer.linear, nn.Linear):
+                w = layer.linear.weight.detach().cpu().numpy()  # (n_n, i*n_n)
+                if w.shape[1] > n_n:
+                    # Skip portion = all columns except the last n_n (immediate predecessor)
+                    skip_weights.append(w[:, :-n_n])
+            elif hasattr(layer, 'conv') and isinstance(layer.conv, nn.Conv1d):
+                w = layer.conv.weight.detach().cpu().numpy()
+                skip_weights.append(w.mean(axis=2))
 
     return skip_weights
 
 
-# ── Connectivity factories ─────────────────────────────────────────────
+# ── Connectivity factories ────────────────────────────────────────────
 def full_connectivity(j: int, n_in: int) -> list[int]:
     """Every output node connects to every input node (Linear layers)."""
     return list(range(n_in))
 
-def conv1d_connectivity(kernel_size: int, padding: int, stride: int
-                        ) -> Callable[[int, int], list[int]]:
+
+def conv1d_connectivity(kernel_size: int, padding: int,
+                        stride: int) -> Callable[[int, int], list[int]]:
     """
-    Returns a connectivity function that reflects the actual receptive field
-    of a Conv1d layer with the given kernel_size, padding, and stride.
+    Returns a connectivity function for a Conv1d layer.
 
     For output node j the input positions are:
         src = j * stride - padding + k   for k in range(kernel_size)
-    Only positions in [0, n_in) are kept (boundary clamping = no padding nodes).
+    Only positions in [0, n_in) are kept.
     """
     def _conn(j: int, n_in: int) -> list[int]:
         srcs = []
@@ -97,14 +96,12 @@ def conv1d_connectivity(kernel_size: int, padding: int, stride: int
         return srcs
     return _conn
 
-# ── Model introspection ───────────────────────────────────────────────
+
+# ── Subtitle helper ───────────────────────────────────────────────────
 def _subtitle_from_layers(infos: list[LayerInfo]) -> str:
-    """Build a compact subtitle string from layer types present."""
     parts: list[str] = []
-    seen_conv  = False
-    seen_fc    = False
-    seen_skip  = False
-    for info in infos[1:]:          # skip input stub
+    seen_conv = seen_fc = seen_skip = False
+    for info in infos[1:]:
         if info.extra_srcs:
             seen_skip = True
         if "conv" in info.label:
@@ -120,30 +117,73 @@ def _subtitle_from_layers(infos: list[LayerInfo]) -> str:
     return "  |  ".join(parts) if parts else "custom"
 
 
+# ── ResNet-aware graph builder ────────────────────────────────────────
+def _build_skip_graph_layers(model: nn.Module) -> list[LayerInfo]:
+    """
+    Build LayerInfo list from model._skip_sources.
+
+    Column layout (absolute column indices):
+        col 0          : input stub  (1 node)
+        col 1 … h_n    : hidden layers 0 … h_n-1  (n_n nodes each)
+                         • col 1 (layer 0): full fan-in from col 0, no extra_srcs
+                         • col i+1 (layer i, i≥1): full fan-in from col i,
+                           extra_srcs from each absolute col  k+1  where
+                           k ∈ _skip_sources[i]
+        col h_n+1      : output head  (1 node)
+
+    Mapping: hidden layer index i  →  absolute column  i + 1.
+    """
+    h_n = model.h_n
+    n_n = model.n_n
+
+    # Convert _skip_sources[j] (hidden-layer indices) → absolute column indices
+    # hidden layer k  →  absolute col  k + 1
+    skip_sources_abs: list[list[int]] = [
+        [k + 1 for k in model._skip_sources[j]]
+        for j in range(h_n)
+    ]
+
+    infos: list[LayerInfo] = []
+
+    # col 0 — input stub
+    infos.append(LayerInfo(n_nodes=1, label="in",
+                           connectivity=full_connectivity))
+
+    # cols 1 … h_n — hidden layers
+    for j in range(h_n):
+        extra = [
+            (src_col_abs, list(range(n_n)))
+            for src_col_abs in skip_sources_abs[j]
+        ]
+        infos.append(LayerInfo(
+            n_nodes=n_n,
+            label=f"h{j}\n{n_n}n",
+            connectivity=full_connectivity,
+            extra_srcs=extra,
+        ))
+
+    # col h_n+1 — output head
+    infos.append(LayerInfo(n_nodes=1, label="out",
+                           connectivity=full_connectivity))
+
+    return infos
+
+
+# ── Generic model introspection ───────────────────────────────────────
 def introspect_model(model: nn.Module) -> tuple[list[LayerInfo], str]:
     """
-    Walk a model's direct children (and their children for named sub-modules)
-    and build a list of LayerInfo objects for draw_graph.
+    Walk a model and build a list of LayerInfo objects for draw_graph.
 
-    If the model implements graph_layers() -> list[LayerInfo], that is used
-    directly and generic introspection is skipped entirely.  This is the
-    preferred path for custom architectures (DenseHNN, ConvHNN, etc.) that
-    cannot be faithfully described by walking named_children alone.
-
-    Generic fallback supports:
-        nn.Linear      -> full fan-in column
-        nn.Conv1d      -> kernel-sparse column (actual kernel/padding/stride)
-        nn.Sequential  -> recursed
-        nn.ModuleList  -> recursed (each element processed in order)
-        Activations / BN / Dropout -> skipped (no new column)
+    Priority:
+      1. If the model has _skip_sources and layers, use the ResNet-aware path.
+      2. Generic fallback: walk nn.Linear / nn.Conv1d children in order.
 
     Returns:
         layers_info : list[LayerInfo]  (includes the input stub at index 0)
         subtitle    : str
     """
-    # ── Model-defined override (preferred for custom architectures) ────
-    if hasattr(model, "graph_layers"):
-        infos = model.graph_layers()
+    if hasattr(model, '_skip_sources') and hasattr(model, 'layers'):
+        infos = _build_skip_graph_layers(model)
         return infos, _subtitle_from_layers(infos)
 
     # ── Generic introspection ──────────────────────────────────────────
@@ -162,10 +202,9 @@ def introspect_model(model: nn.Module) -> tuple[list[LayerInfo], str]:
             p = mod.padding[0] if isinstance(mod.padding, tuple) else mod.padding
             s = mod.stride[0]  if isinstance(mod.stride,  tuple) else mod.stride
             label = f"conv{conv_count}\n{mod.out_channels}n\nk={k} p={p} s={s}"
-            if mod.in_channels == 1 or mod.out_channels == 1:
-                conn = full_connectivity
-            else:
-                conn = conv1d_connectivity(k, p, s)
+            conn  = full_connectivity \
+                if (mod.in_channels == 1 or mod.out_channels == 1) \
+                else conv1d_connectivity(k, p, s)
             layers_info.append(LayerInfo(n_nodes=mod.out_channels,
                                          label=label, connectivity=conn))
         elif isinstance(mod, nn.Linear):
@@ -177,24 +216,21 @@ def introspect_model(model: nn.Module) -> tuple[list[LayerInfo], str]:
         elif isinstance(mod, (nn.Sequential, nn.ModuleList)):
             for child in mod.children():
                 _process_module(child)
-        # Activations, BN, Dropout, custom layers without Linear/Conv1d → skip
 
-    # ── Walk top-level named sub-modules in declaration order ─────────
     for name, child in model.named_children():
         if isinstance(child, nn.Conv1d):
-            # bare Conv1d (e.g. CNN.head)
             k = child.kernel_size[0]
             p = child.padding[0] if isinstance(child.padding, tuple) else child.padding
             s = child.stride[0]  if isinstance(child.stride,  tuple) else child.stride
             label = f"out\n1n\nk={k}"
-            conn  = full_connectivity if (child.in_channels == 1 or child.out_channels == 1) \
-                    else conv1d_connectivity(k, p, s)
+            conn  = full_connectivity \
+                if (child.in_channels == 1 or child.out_channels == 1) \
+                else conv1d_connectivity(k, p, s)
             layers_info.append(LayerInfo(n_nodes=child.out_channels,
                                          label=label, connectivity=conn))
         else:
             _process_module(child)
 
-    # ── Ensure output stub exists ──────────────────────────────────────
     if layers_info[-1].label != "out" and layers_info[-1].n_nodes != 1:
         layers_info.append(LayerInfo(
             n_nodes=1, label="out", connectivity=full_connectivity
@@ -209,31 +245,23 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
     """
     Draw the network architecture on *ax*.
 
-    Architecture-agnostic: works for FCNN, CNN (arbitrary kernel/padding/stride),
-    Highway networks, DenseNets, or any hybrid — as long as the model is composed
-    of nn.Linear and/or nn.Conv1d layers arranged in nn.Sequential sub-modules
-    (the standard PyTorch idiom).
-
-    Connectivity is derived directly from each layer's actual attributes
-    (kernel_size, padding, stride) rather than hard-coded assumptions.
-
-    Layers with more nodes than *ellipsize_after* show the first
-    (ellipsize_after-1) nodes plus a grey ellipsis marker.
+    extra_srcs in LayerInfo stores *absolute* source column indices so arc
+    arrows are drawn correctly for any skip distance.
     """
     ax.set_aspect("equal")
     ax.axis("off")
     ax.set_facecolor("#F5F5F5")
+
     layers_info, subtitle = introspect_model(model)
-    
-    weights = extract_layer_weights(model)
+
+    weights      = extract_layer_weights(model)
     skip_weights = extract_skip_weights(model)
+    all_weights  = weights + skip_weights
+    max_weight   = max(np.max(np.abs(w)) for w in all_weights) if all_weights else 1.0
+
     layer_weight_idx = 0
-    skip_weight_idx = 0
-    all_weights = weights + skip_weights
-    max_weight = max(
-        np.max(np.abs(w)) for w in all_weights
-    ) if weights else 1.0
-        
+    skip_weight_idx  = 0
+
     n_cols = len(layers_info)
     x_pos  = np.linspace(0, (n_cols - 1) * 3, n_cols)
 
@@ -252,70 +280,71 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
         ys_out   = y_coords(info_out.n_nodes)
         n_in     = n_shown(info_in.n_nodes)
         n_out    = n_shown(info_out.n_nodes)
-        
+
         weight_matrix = None
         if layer_weight_idx < len(weights):
             weight_matrix = weights[layer_weight_idx]
             layer_weight_idx += 1
-        
+
         for j in range(n_out):
             srcs = info_out.connectivity(j, n_in)
             for src in srcs:
                 if 0 <= src < n_in:
-                    color = "#000000" # initial color value for error checking if any nodes aren't colored correctly
-                    alpha = 0.5       # initial opacity value
+                    color = "#000000"
+                    alpha = 0.5
                     if weight_matrix is not None:
                         try:
-                            w = weight_matrix[j, src]
-                            alpha = abs(w)/max_weight
+                            w     = weight_matrix[j, src]
+                            alpha = (abs(w) / max_weight) * 0.9 + 0.1
                             color = "#d62728" if w < 0 else "#1f77b4"
                         except Exception:
                             pass
                     ax.plot(
-                    [x_pos[li - 1], x_pos[li]],
-                    [ys_in[src], ys_out[j]],
-                    color=color,
-                    lw=1,
-                    alpha=alpha,
-                    zorder=1)
+                        [x_pos[li - 1], x_pos[li]],
+                        [ys_in[src],    ys_out[j]],
+                        color=color, lw=1, alpha=alpha, zorder=1,
+                    )
 
     # ── Edges (skip / residual connections) ───────────────────────────
     for li, info_out in enumerate(layers_info):
-        for layer_offset, skip_srcs in info_out.extra_srcs:
-            src_li = li + layer_offset          # layer_offset is negative
-            if src_li < 0:
+        for src_col_abs, skip_srcs in info_out.extra_srcs:
+            if src_col_abs < 0 or src_col_abs >= n_cols:
                 continue
-            
-            info_skip = layers_info[src_li]
+
+            info_skip = layers_info[src_col_abs]
             ys_skip   = y_coords(info_skip.n_nodes)
             ys_out    = y_coords(info_out.n_nodes)
             n_skip    = n_shown(info_skip.n_nodes)
             n_out     = n_shown(info_out.n_nodes)
-            
+
             weight_matrix = None
             if skip_weight_idx < len(skip_weights):
                 weight_matrix = skip_weights[skip_weight_idx]
                 skip_weight_idx += 1
-                
+
+            skip_dist = li - src_col_abs
+            rad       = 0.2 + 0.1 * skip_dist
+
             for j, src in enumerate(skip_srcs):
                 if 0 <= src < n_skip and j < n_out:
-                    color = "#999999"
-                    alpha = 0.6
+                    color = "#2ca02c"
+                    alpha = 0.5
                     if weight_matrix is not None:
                         try:
-                            w = weight_matrix[j % weight_matrix.shape[0],
-                                              src % weight_matrix.shape[1]]
-                            alpha = min(abs(w) / max_weight, 1.0)
-                            color = "#ff8c00" if w < 0 else "#2ca02c"  # Orange / Green
+                            w     = weight_matrix[j % weight_matrix.shape[0],
+                                                  src % weight_matrix.shape[1]]
+                            alpha = (abs(w) / max_weight) * 0.9 + 0.1
+                            color = "#ff8c00" if w < 0 else "#2ca02c"
                         except Exception:
                             pass
-                    
                     ax.annotate(
-                        "", xy=(x_pos[li], ys_out[j]),
-                        xytext=(x_pos[src_li], ys_skip[src]),
+                        "",
+                        xy     =(x_pos[li],           ys_out[j]),
+                        xytext =(x_pos[src_col_abs],   ys_skip[src]),
                         arrowprops=dict(
                             arrowstyle="->", color=color,
-                            lw=1.2, alpha=alpha, connectionstyle="arc3,rad=0.35",
+                            lw=1.2, alpha=alpha,
+                            connectionstyle=f"arc3,rad={rad:.2f}",
                         ),
                         zorder=1,
                     )
@@ -352,8 +381,8 @@ def draw_graph(ax: plt.Axes, model: nn.Module, ellipsize_after: int = 8) -> None
 
     ax.set_title(f"Network graph  ({subtitle})", fontsize=8, pad=4)
     margin = 0.2
-    ax.set_xlim(x_pos[0] - margin, x_pos[-1] + margin)
-    ax.set_ylim(y_bot - margin, max_shown / 2 + margin)
+    ax.set_xlim(x_pos[0]  - margin, x_pos[-1] + margin)
+    ax.set_ylim(y_bot      - margin, max_shown / 2 + margin)
 
 
 # ── Animation factory ─────────────────────────────────────────────────
@@ -361,21 +390,21 @@ def make_animation(
     model:      nn.Module,
     snapshots:  list,
     mse_losses: list,
-    bce_losses:  list,
+    bce_losses: list,
     x_np:       np.ndarray,
     y_np:       np.ndarray,
     epochs:     int,
     title:      str,
     pred_color: str,
     mse_color:  str,
-    bce_color:   str,
+    bce_color:  str,
 ) -> tuple:
     """
-    Build a 2x2 animated figure:
+    Build a 2×2 animated figure:
         [top-left]     curve fit (animated)
         [top-right]    network graph (static)
         [bottom-left]  MSE loss curve (animated)
-        [bottom-right] binary cross entropy loss curve (animated)
+        [bottom-right] binary cross-entropy loss curve (animated)
 
     Returns (fig, ani).
     """
@@ -387,12 +416,13 @@ def make_animation(
     ax_fit   = fig.add_subplot(gs[0, 0])
     ax_graph = fig.add_subplot(gs[0, 1])
     ax_mse   = fig.add_subplot(gs[1, 0])
-    ax_bce    = fig.add_subplot(gs[1, 1])
+    ax_bce   = fig.add_subplot(gs[1, 1])
 
     # ── Top-left: curve fit ───────────────────────────────────────────
-    ax_fit.scatter(x_np, y_np, s=8, alpha=0.4, color="#aaaaaa", label="Data", zorder=1)
+    ax_fit.scatter(x_np, y_np, s=8, alpha=0.4, color="#aaaaaa",
+                   label="Data", zorder=1)
     ax_fit.set_xlim(np.min(x_np) * 1.05, np.max(x_np) * 1.05)
-    ax_fit.set_ylim(np.min(y_np) * 1.2, np.max(y_np) * 1.2)
+    ax_fit.set_ylim(np.min(y_np) * 1.2,  np.max(y_np) * 1.2)
     ax_fit.set_xlabel("x")
     ax_fit.set_ylabel("y")
     ax_fit.set_title("Curve fit")
@@ -408,7 +438,7 @@ def make_animation(
     ax_mse.set_ylabel("MSE Loss")
     ax_mse.set_title("MSE Loss")
 
-    # ── Bottom-right: binary cross entropy loss ──────────────────────────────
+    # ── Bottom-right: BCE loss ────────────────────────────────────────
     ax_bce.set_xlim(1, epochs)
     ax_bce.set_ylim(max(min(bce_losses) * 0.5, 1e-9), max(bce_losses) * 1.1)
     ax_bce.set_yscale("log")
@@ -417,15 +447,16 @@ def make_animation(
     ax_bce.set_title("Binary Cross Entropy Loss")
 
     # ── Dynamic artists ───────────────────────────────────────────────
-    (line_pred,) = ax_fit.plot([], [], lw=2, color=pred_color, zorder=2, label="Prediction")
+    (line_pred,) = ax_fit.plot([], [], lw=2, color=pred_color,
+                               zorder=2, label="Prediction")
     fit_title    = ax_fit.set_title("")
     ax_fit.legend(loc="upper right", fontsize=8)
 
     (line_mse,) = ax_mse.plot([], [], lw=1.5, color=mse_color)
     dot_mse,    = ax_mse.plot([], [], "o",    color=pred_color, ms=6, zorder=3)
 
-    (line_bce,)  = ax_bce.plot([], [], lw=1.5, color=bce_color)
-    dot_bce,     = ax_bce.plot([], [], "o",    color=pred_color, ms=6, zorder=3)
+    (line_bce,) = ax_bce.plot([], [], lw=1.5, color=bce_color)
+    dot_bce,    = ax_bce.plot([], [], "o",    color=pred_color, ms=6, zorder=3)
 
     fig.suptitle(title, fontsize=13)
     fig.subplots_adjust(top=0.93, hspace=0.35, wspace=0.35)
