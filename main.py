@@ -17,19 +17,22 @@ def test_func(x):
 if __name__ == "__main__":
 
     # ── Shared config ─────────────────────────────────────────────────
-    H_N       = 5               # number of hidden / conv layers
-    N_N       = 15              # nodes per dense layer / filters per conv layer
-    FUNC      = nn.Tanh()       # activation: nn.Tanh() | nn.ReLU() | nn.Sigmoid | nn.Softplus | nn.Softshrink | nn.Softsign | nn.Mish | etc.
+    H_N       = 5 # number of hidden / conv layers
+    N_N       = 8 # nodes per dense layer / filters per conv layer
+    FUNC      = nn.Tanh() # activation: nn.Tanh() | nn.ReLU() | nn.Sigmoid | nn.Softplus | nn.Softshrink | nn.Softsign | nn.Mish | etc.
     EPOCHS    = 1000
     DROPOUT   = 0.2
     LR        = 1e-2
-    LOG_EVERY = 10              # snapshot + print interval
+    LOG_EVERY = 10 # snapshot + print interval
     K_SIZE    = 3
     PADDING   = 1
     STRIDE    = 1
     CONNECT   = 3
     INPUT_N   = 200
     NOISE_STD = 0.1
+    SHOW      = False # whether to show the figures or not
+    FILE_TYPE = 'gif' # save file type: gif | png | jpeg
+    SAVE      = True
     # ──────────────────────────────────────────────────────────────────
 
     # ── Synthetic data (non-uniform Gaussian noise) ───────────────────
@@ -71,66 +74,75 @@ if __name__ == "__main__":
         label=f"ConvResNet  |  layers={H_N}  filters={N_N}  connect={CONNECT}  k={K_SIZE}  p={PADDING}  s={STRIDE}  act={act_name}",
     )
 
-    # ── Animate & save FCNN GIF ───────────────────────────────────
+    # ── Animate & save FCNN ───────────────────────────────────────────
     fig_dense, ani_dense = make_animation(
-        model        = dense_model,
-        snapshots    = dense_snaps,
-        mse_losses   = dense_mse,
-        bce_losses   = dense_bce,
-        x_np         = x_np,
-        y_np         = y_np,
-        epochs       = EPOCHS,
-        title        = f"Fully Connected NN — {H_N} hidden layers × {N_N} nodes  [{act_name}]",
-        pred_color   = "#e05c2e",
-        mse_color    = "#2e7de0",
-        bce_color    = "#7c3aed",
+        model = dense_model,
+        snapshots = dense_snaps,
+        mse_losses = dense_mse,
+        bce_losses = dense_bce,
+        x_np = x_np,
+        y_np = y_np,
+        epochs = EPOCHS,
+        title = f"Fully Connected NN — {H_N} hidden layers × {N_N} nodes  [{act_name}]",
+        pred_color = "#e05c2e",
+        mse_color = "#2e7de0",
+        bce_color = "#7c3aed",
+        file_type = FILE_TYPE,
+        ifsave = SAVE
     )
-    print("\nSaving FCNN_training.gif … ", end="")
-    ani_dense.save("FCNN_training.gif", writer="pillow", fps=15)
-    print("Saved  →  FCNN_training.gif")
 
-    # ── Animate & save CNN GIF ────────────────────────────────────
+    # ── Animate & save CNN ────────────────────────────────────────────
     fig_conv, ani_conv = make_animation(
-        model        = conv_model,
-        snapshots    = conv_snaps,
-        mse_losses   = conv_mse,
-        bce_losses   = conv_bce,
-        x_np         = x_np,
-        y_np         = y_np,
-        epochs       = EPOCHS,
-        title        = f"Convolutional NN — {H_N} conv layers × {N_N} filters  [{act_name}]",
-        pred_color   = "#e05c2e",
-        mse_color    = "#2e7de0",
-        bce_color    = "#7c3aed",
+        model = conv_model,
+        snapshots = conv_snaps,
+        mse_losses = conv_mse,
+        bce_losses = conv_bce,
+        x_np = x_np,
+        y_np = y_np,
+        epochs = EPOCHS,
+        title = f"Convolutional NN — {H_N} conv layers × {N_N} filters  [{act_name}]",
+        pred_color = "#e05c2e",
+        mse_color = "#2e7de0",
+        bce_color = "#7c3aed",
+        file_type = FILE_TYPE,
+        ifsave = SAVE
     )
-    print("Saving CNN_training.gif … ", end="")
-    ani_conv.save("CNN_training.gif", writer="pillow", fps=15)
-    print("Saved  →  CNN_training.gif")
 
-    # ── Animate & save DenseResNet GIF ───────────────────────────────
+    # ── Animate & save DenseResNet ─────────────────────────────────────
     fig_dense_res, ani_dense_res = make_animation(
-        model=dense_res_model, snapshots=dense_res_snaps,
-        mse_losses=dense_res_mse, bce_losses=dense_res_ce,
-        x_np=x_np, y_np=y_np, epochs=EPOCHS,
-        title=f"Dense ResNet — {H_N} layers × {N_N} nodes  [{act_name}]",
-        pred_color="#e05c2e", mse_color="#2e7de0", bce_color="#7c3aed",
+        model = dense_res_model,
+        snapshots = dense_res_snaps,
+        mse_losses = dense_res_mse,
+        bce_losses = dense_res_ce,
+        x_np = x_np,
+        y_np = y_np,
+        epochs = EPOCHS,
+        title = f"Dense ResNet — {H_N} layers × {N_N} nodes  [{act_name}]",
+        pred_color = "#e05c2e",
+        mse_color = "#2e7de0",
+        bce_color = "#7c3aed",
+        file_type = FILE_TYPE,
+        ifsave = SAVE
     )
-    print("Saving DenseResNet_training.gif … ", end="")
-    ani_dense_res.save("DenseResNet_training.gif", writer="pillow", fps=15)
-    print("Saved  →  DenseResNet_training.gif")
 
-    # ── Animate & save ConvResNet GIF ────────────────────────────────
+    # ── Animate & save ConvResNet ──────────────────────────────────────
     fig_conv_res, ani_conv_res = make_animation(
-        model=conv_res_model, snapshots=conv_res_snaps,
-        mse_losses=conv_res_mse, bce_losses=conv_res_ce,
-        x_np=x_np, y_np=y_np, epochs=EPOCHS,
-        title=f"Conv ResNet — {H_N} layers × {N_N} filters  connect={CONNECT}  k={K_SIZE}  [{act_name}]",
-        pred_color="#e05c2e", mse_color="#2e7de0", bce_color="#7c3aed",
+        model = conv_res_model,
+        snapshots = conv_res_snaps,
+        mse_losses = conv_res_mse,
+        bce_losses = conv_res_ce,
+        x_np = x_np,
+        y_np = y_np,
+        epochs = EPOCHS,
+        title = f"Conv ResNet — {H_N} layers × {N_N} filters  connect={CONNECT}  k={K_SIZE}  [{act_name}]",
+        pred_color = "#e05c2e",
+        mse_color = "#2e7de0",
+        bce_color = "#7c3aed",
+        file_type = FILE_TYPE,
+        ifsave = SAVE
     )
-    print("Saving ConvResNet_training.gif … ", end="")
-    ani_conv_res.save("ConvResNet_training.gif", writer="pillow", fps=15)
-    print("Saved  →  ConvResNet_training.gif")
     
-    for fig in (fig_dense, fig_conv, fig_dense_res, fig_conv_res):
-        fig.set_size_inches(7, 5)
-    plt.show()
+    if SHOW:
+        for fig in (fig_dense, fig_conv, fig_dense_res, fig_conv_res):
+            fig.set_size_inches(7, 5)
+        plt.show()
