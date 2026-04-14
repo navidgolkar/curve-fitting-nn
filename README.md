@@ -1,9 +1,7 @@
 # curve-fitting-nn
 different neural networks used for curve fitting + visualiztion and comparison
-## $sin(x)$
-![dense1](https://github.com/navidgolkar/curve-fitting-nn/blob/main/densenet_training_1.gif)
-![conv1](https://github.com/navidgolkar/curve-fitting-nn/blob/main/convnet_training_1.gif)
-___
-## $x*sin(x) + cos(x)$
-![dense2](https://github.com/navidgolkar/curve-fitting-nn/blob/main/densenet_training.gif)
-![conv2](https://github.com/navidgolkar/curve-fitting-nn/blob/main/convnet_training.gif)
+## $2e^{-x}(\sin(5x)+x\cos(5x))$
+| Dense Configuration | Convolutional Configuration |
+| :-------: | :-------: |
+| ![densenet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/FullyConnectedNN.gif) | ![convnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/ConvolutionalNN.gif) |
+| ![denseresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/DenseResNet.gif) | ![convresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/ConvResNet.gif) |
