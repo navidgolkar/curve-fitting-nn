@@ -1,5 +1,5 @@
 # curve-fitting-nn
-4 different configurations of neural networks used for curve fitting + visualiztion
+4 different configurations of neural networks used for curve fitting + visualization
 
 in main.py you can change:
 - H_N: number of hidden layers
