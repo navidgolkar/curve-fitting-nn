@@ -29,3 +29,8 @@ to use you can clone this repository and install the packages needed in requirem
 | :-------: | :-------: |
 | ![densenet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/FullyConnectedNN_5x8.gif) | ![convnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/ConvolutionalNN_5x8.gif) |
 | ![denseresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/DenseResNet_5x8.gif) | ![convresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/ConvResNet_5x8.gif) |
+
+## To-do:
+- Add CustomNet where you input connections and activation functions as a list and you can 'prune" any connection
+- use argparse (Argument Parser) in main
+- add a heuristic approch for optimizing a Neural Network (CustomNet) e.g.: Grey Wolves Optimization, Genetic Algorith
