@@ -11,26 +11,10 @@ def _full_connections(n_out: int, n_in: int) -> np.ndarray:
     return np.ones((n_out, n_in), dtype=bool)
  
  
-def _conv_connections(n_out: int, n_in: int,
-                      kernel_size: int, padding: int, stride: int) -> np.ndarray:
-    """
-    Sparse (n_out × n_in) connectivity matrix for Conv1d(n_in, n_out, ...).
-    Entry [out_filter, in_filter] = True iff out_filter's receptive field
-    overlaps with in_filter.
-    """
-    conn = np.zeros((n_out, n_in), dtype=bool)
-    for j in range(n_out):
-        i_min = j * stride - padding
-        i_max = i_min + kernel_size - 1
-        for i in range(n_in):
-            if i_min <= i <= i_max:
-                conn[j, i] = True
-    return conn
- 
 def _conv_connections(n_out: int, n_in: int, kernel_size: int, padding: int, stride: int) -> np.ndarray:
     """
     Sparse (n_out × n_in) connectivity matrix for Conv1d(n_in, n_out, ...).
-    Entry [out_filter, in_filter] = True  iff  out_filter's receptive field
+    Entry [out_filter, in_filter] = True iff out_filter's receptive field
     overlaps with in_filter.
     """
     conn = np.zeros((n_out, n_in), dtype=bool)
@@ -121,8 +105,9 @@ class CNN(nn.Module):
         params._connections = [_full_connections(sizes[1], sizes[0])]
         for i in range(1, n_layers - 2):
             params._connections.append(_conv_connections(sizes[i + 1], sizes[i], kernel_size, padding, stride))
+        params._connections.append(_full_connections(sizes[-1], sizes[-2]))
         
-        # Build conv body
+        # Hidden body
         conv_layers: list[nn.Module] = [nn.Conv1d(sizes[0], sizes[1], kernel_size=1), copy.deepcopy(funcs[0])]
         for i in range(1, n_layers-2):
             conv_layers.extend([nn.Conv1d(sizes[i], sizes[i + 1], kernel_size=kernel_size, padding=padding, stride=stride), copy.deepcopy(funcs[i])])
@@ -167,7 +152,7 @@ class DenseResNet(nn.Module):
         self.n_layers = len(sizes)
         
         if len(set(sizes[1:-1])) > 1:
-            raise ValueError(f"DenseResNet requires all hidden layers to have the same width (needed for parameter-free residual addition), got hidden sizes {sizes[1:-1]}.")
+            raise ValueError(f"DenseResNet requires uniform hidden widths, got {sizes[1:-1]}.")
         
         # _connections: full transitions including head
         params._connections = [_full_connections(sizes[i + 1], sizes[i]) for i in range(self.n_layers - 1)]
@@ -234,7 +219,7 @@ class ConvResNet(nn.Module):
         self.n_layers = len(sizes)
         
         if len(set(sizes[1:-1])) > 1:
-            raise ValueError(f"ConvResNet requires all hidden layers to have the same filter count (needed for parameter-free residual addition), got hidden sizes {sizes[1:-1]}.")
+            raise ValueError(f"ConvResNet requires uniform hidden filter counts, got {sizes[1:-1]}.")
         
         # _connections[i]: correct (out × in) for each transition.
         params._connections = [_full_connections(sizes[1], sizes[0])]
@@ -258,7 +243,7 @@ class ConvResNet(nn.Module):
                 self._skip_sources[j].append(i)
                 
         # Hidden Body
-        layer_list: list[nn.Module] = [nn.Sequential(nn.Conv1d(1, sizes[1], kernel_size=1), copy.deepcopy(funcs[0]))]
+        layer_list: list[nn.Module] = [nn.Sequential(nn.Conv1d(sizes[0], sizes[1], kernel_size=1), copy.deepcopy(funcs[0]))]
         for i in range(1, self.n_layers - 2):
             layer_list.append(nn.Sequential(nn.Conv1d(sizes[i], sizes[i + 1], kernel_size=kernel_size, padding=padding, stride=stride), copy.deepcopy(funcs[i])))
         self.layers = nn.ModuleList(layer_list)

@@ -16,13 +16,13 @@ def test_func(x):
 if __name__ == "__main__":
 
     # Shared config -----------------------------------------------------------
-    H_N       = 4 # number of hidden / conv layers
-    N_N       = 6 # nodes per dense layer / filters per conv layer
+    H_N       = 5 # number of hidden / conv layers
+    N_N       = 8 # nodes per dense layer / filters per conv layer
     FUNC      = nn.Mish() # activation: nn.Tanh | nn.ReLU | nn.Sigmoid | nn.Softplus | nn.Softshrink | nn.Softsign | nn.Mish | etc.
     K_SIZE    = 3
     PADDING   = 1
     STRIDE    = 1
-    CONNECT   = 2
+    CONNECT   = 3
     
     params = ModelParams(
         name    = "",
@@ -37,13 +37,13 @@ if __name__ == "__main__":
         loss_function = nn.MSELoss(),
         loss_function2 = nn.BCEWithLogitsLoss(),
         device = "cpu",
-        verbose = False,
+        verbose = True,
     )
     
     INPUT_N   = 200
     NOISE_STD = 0.1
-    SHOW      = False # whether to show the figures or not
-    FILE_TYPE = "png" # save file type: gif | png | jpeg
+    SHOW      = True # whether to show the figures or not
+    FILE_TYPE = "gif" # save file type: gif | png | jpeg
     SAVE      = "saves"
     
     PRED_COLOR  = "#e05c2e"
