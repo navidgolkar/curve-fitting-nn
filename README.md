@@ -33,12 +33,12 @@ to use you can clone this repository and install the packages needed in requirem
 ## $2e^{-x}(\sin(5x)+x\cos(5x))$
 | Dense Configuration | Convolutional Configuration |
 | :-------: | :-------: |
-| ![densenet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/FCNN_7x7_5.gif) | ![convnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CNN_7x7_5.gif) |
-| ![denseresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/DenseResNet_7x7_5.gif) | ![convresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/ConvResNet_7x7_5.gif) |
+| ![densenet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/FCNN_7x7_1.gif) | ![convnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CNN_7x7_1.gif) |
+| ![denseresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/DenseResNet_7x7_1.gif) | ![convresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/ConvResNet_7x7_1.gif) |
 
 | Custom Configuration |
 | :------------------: |
-| ![customnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CustomNet_7x7_5.gif) |
+| ![customnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CustomNet_7x7_1.gif) |
 
 ## Observations
 - FCNN and DenseResNet change more uniformly through epochs because of their dense configuration, while CNN, ConvResNet and CustomNet change very "noisily"
@@ -52,7 +52,7 @@ to use you can clone this repository and install the packages needed in requirem
 ## Console Output
 ```
 ------------------------------------------------------------
-  FCNN_7x7_5
+  FCNN_7x7_1
 FCNN(
   (net): Sequential(
     (0): Linear(in_features=1, out_features=7, bias=True)
@@ -173,7 +173,7 @@ Epoch    990 | MSELoss: 0.009932 | BCEWithLogitsLoss: 0.4268
 Epoch   1000 | MSELoss: 0.009913 | BCEWithLogitsLoss: 0.4267
 
 ------------------------------------------------------------
-  CNN_7x7_5
+  CNN_7x7_1
 CNN(
   (conv): Sequential(
     (0): Conv1d(1, 7, kernel_size=(1,), stride=(1,))
@@ -294,7 +294,7 @@ Epoch    990 | MSELoss: 0.015192 | BCEWithLogitsLoss: 0.4363
 Epoch   1000 | MSELoss: 0.015554 | BCEWithLogitsLoss: 0.4262
 
 ------------------------------------------------------------
-  DenseResNet_7x7_5
+  DenseResNet_7x7_1
 DenseResNet(
   (layers): ModuleList(
     (0): Sequential(
@@ -413,7 +413,7 @@ Epoch    990 | MSELoss: 0.010887 | BCEWithLogitsLoss: 0.4182
 Epoch   1000 | MSELoss: 0.010705 | BCEWithLogitsLoss: 0.4351
 
 ------------------------------------------------------------
-  ConvResNet_7x7_5
+  ConvResNet_7x7_1
 ConvResNet(
   (layers): ModuleList(
     (0): Sequential(
@@ -532,7 +532,7 @@ Epoch    990 | MSELoss: 0.020468 | BCEWithLogitsLoss: 0.4288
 Epoch   1000 | MSELoss: 0.014485 | BCEWithLogitsLoss: 0.4325
 
 ------------------------------------------------------------
-  CustomNet_7x7_5
+  CustomNet_7x7_1
 CustomNet(
   (_linears): ModuleList(
     (0): Linear(in_features=1, out_features=7, bias=True)
@@ -647,9 +647,9 @@ Epoch    970 | MSELoss: 0.017501 | BCEWithLogitsLoss: 0.4022
 Epoch    980 | MSELoss: 0.015401 | BCEWithLogitsLoss: 0.4063
 Epoch    990 | MSELoss: 0.013208 | BCEWithLogitsLoss: 0.4449
 Epoch   1000 | MSELoss: 0.011975 | BCEWithLogitsLoss: 0.4242
-FCNN_7x7_5.gif ... saved
-CNN_7x7_5.gif ... saved
-DenseResNet_7x7_5.gif ... saved
-ConvResNet_7x7_5.gif ... saved
-CustomNet_7x7_5.gif ... saved
+FCNN_7x7_1.gif ... saved
+CNN_7x7_1.gif ... saved
+DenseResNet_7x7_1.gif ... saved
+ConvResNet_7x7_1.gif ... saved
+CustomNet_7x7_1.gif ... saved
 ```
