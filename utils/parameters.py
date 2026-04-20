@@ -5,8 +5,36 @@ import torch
 import torch.nn as nn
 import numpy as np
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
 
+FUNC_DICT = {
+        1: nn.ELU(),
+        2: nn.Hardshrink(),
+        3: nn.Hardsigmoid(),
+        4: nn.Hardtanh(),
+        5: nn.Hardswish(),
+        6: nn.LeakyReLU(),
+        7: nn.LogSigmoid(),
+        8: nn.PReLU(),
+        9: nn.ReLU(),
+        10: nn.ReLU6(),
+        11: nn.RReLU(),
+        12: nn.SELU(),
+        13: nn.CELU(),
+        14: nn.GELU(),
+        15: nn.Sigmoid(),
+        16: nn.SiLU(),
+        17: nn.Mish(),
+        18: nn.Softplus(),
+        19: nn.Softshrink(),
+        20: nn.Softsign(),
+        21: nn.Tanh(),
+        22: nn.Tanhshrink(),
+        23: nn.Threshold(threshold = 0, value = -0.1), # with threshold=0 and value=0 would be the same as ReLU 
+        24: nn.GLU(),
+        25: nn.Softmin(),
+        26: nn.Softmax(),
+        27: nn.LogSoftmax(),
+        }
 
 @dataclass
 class ModelParams:
