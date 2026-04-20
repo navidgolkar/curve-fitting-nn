@@ -39,11 +39,11 @@ FUNC_DICT = {
 LOSS_FUNC_DICT = {
     1: nn.L1Loss(),
     2: nn.MSELoss(),
-    3: nn.PoissonNLLLoss(),
-    4: nn.BCEWithLogitsLoss(),
-    5: nn.HingeEmbeddingLoss(),
-    6: nn.HuberLoss(),
-    7: nn.SmoothL1Loss(),
+    3: nn.HuberLoss(),
+    4: nn.SmoothL1Loss(),
+    5: nn.PoissonNLLLoss(),
+    6: nn.BCEWithLogitsLoss(),
+    7: nn.HingeEmbeddingLoss(),
     8: nn.SoftMarginLoss(),
     9: nn.MultiLabelSoftMarginLoss(),
     }

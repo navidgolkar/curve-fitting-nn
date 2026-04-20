@@ -104,7 +104,8 @@ def _build_layers_info(model) -> tuple[list[LayerInfo], str]:
     
     # subtitle
     has_skip = p._is_resnet
-    subtitle = kind + ("  |  skip connections" if has_skip else "")
+    convresnet_sub = f" [connect={model.connect}]" if "ConvResNet" in p.name else ""
+    subtitle = kind + ("  |  skip connections"+convresnet_sub if has_skip else "")
  
     return layers_info, subtitle
 
