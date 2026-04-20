@@ -36,6 +36,17 @@ FUNC_DICT = {
         27: nn.LogSoftmax(),
         }
 
+LOSS_FUNC_DICT = {
+    1: nn.L1Loss(),
+    2: nn.MSELoss(),
+    3: nn.PoissonNLLLoss(),
+    4: nn.BCEWithLogitsLoss(),
+    5: nn.HingeEmbeddingLoss(),
+    6: nn.HuberLoss(),
+    7: nn.SmoothL1Loss(),
+    8: nn.SoftMarginLoss(),
+    9: nn.MultiLabelSoftMarginLoss(),
+    }
 @dataclass
 class ModelParams:
     """

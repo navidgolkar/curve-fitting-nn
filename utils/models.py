@@ -280,9 +280,10 @@ class CustomNet(nn.Module):
  
     Args:
         params : ModelParams
-        nodes  : ``nodes[src_layer][src_node]`` = ``[(tgt_layer, tgt_node), ...]``
+        nodes  : flat list of ``(src_layer, src_node, tgt_layer, tgt_node)``
+            tuples defining every active edge.  The list need not be sorted.
     """
-    def __init__(self, params: ModelParams, nodes:  list[list[list[tuple[int, int]]]]) -> None:
+    def __init__(self, params: ModelParams, nodes: list[tuple[int, int, int, int]]) -> None:
         super().__init__()
         check_parameters(params)
         apply_seed(params.seed)
@@ -296,24 +297,21 @@ class CustomNet(nn.Module):
         adjacent_active: dict[int, set[tuple[int, int]]] = {}
         skip_pairs: set[tuple[int, int]] = set()
         
-        for src_layer, src_nodes_list in enumerate(nodes):
-            for src_node, targets in enumerate(src_nodes_list):
-                for tgt_layer, tgt_node in targets:
-                    if tgt_layer <= src_layer:
-                        raise ValueError(f"Edge ({src_layer},{src_node})→({tgt_layer},{tgt_node}): tgt_layer must be > src_layer.")
-                    if tgt_layer >= self.n_layers:
-                        raise ValueError(f"Edge targets layer {tgt_layer} but only {self.n_layers} layers are defined.")
-                    if src_node >= self.layer_sizes[src_layer]:
-                        raise ValueError(f"src_node {src_node} out of range for layer {src_layer} (size {self.layer_sizes[src_layer]}).")
-                    if tgt_node >= self.layer_sizes[tgt_layer]:
-                        raise ValueError(f"tgt_node {tgt_node} out of range for layer {tgt_layer} (size {self.layer_sizes[tgt_layer]}).")
-                    
-                    if tgt_layer == src_layer + 1:
-                        adjacent_active.setdefault(src_layer, set()).add((tgt_node, src_node))
-                    else:
-                        if self.layer_sizes[src_layer] != self.layer_sizes[tgt_layer]:
-                            raise ValueError(f"Skip edge ({src_layer})→({tgt_layer}): layer_sizes must match ({self.layer_sizes[src_layer]} ≠ {self.layer_sizes[tgt_layer]}).")
-                        skip_pairs.add((src_layer, tgt_layer))
+        for src_layer, src_node, tgt_layer, tgt_node in nodes:
+            if tgt_layer <= src_layer:
+                raise ValueError(f"Edge ({src_layer},{src_node})→({tgt_layer},{tgt_node}): tgt_layer must be > src_layer.")
+            if tgt_layer >= self.n_layers:
+                raise ValueError(f"Edge targets layer {tgt_layer} but only {self.n_layers} layers are defined.")
+            if src_node >= self.layer_sizes[src_layer]:
+                raise ValueError(f"src_node {src_node} out of range for layer {src_layer} (size {self.layer_sizes[src_layer]}).")
+            if tgt_node >= self.layer_sizes[tgt_layer]:
+                raise ValueError(f"tgt_node {tgt_node} out of range for layer {tgt_layer} (size {self.layer_sizes[tgt_layer]}).")
+            if tgt_layer == src_layer + 1:
+                adjacent_active.setdefault(src_layer, set()).add((tgt_node, src_node))
+            else:
+                if self.layer_sizes[src_layer] != self.layer_sizes[tgt_layer]:
+                    raise ValueError(f"Skip edge ({src_layer})→({tgt_layer}): layer_sizes must match ({self.layer_sizes[src_layer]} ≠ {self.layer_sizes[tgt_layer]}).")
+                skip_pairs.add((src_layer, tgt_layer))
         
         # _connections[i]: (sizes[i+1] × sizes[i]) bool, from adjacent_active
         params._connections = []
