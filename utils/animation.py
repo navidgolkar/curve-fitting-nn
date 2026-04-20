@@ -44,21 +44,18 @@ def extract_layer_weights(model) -> list[np.ndarray]:
 # Topology from params --------------------------------------------------------
 def _build_layers_info(model) -> tuple[list[LayerInfo], str]:
     """
-    Build the LayerInfo list from ``model.params``.
-    
-    Every layer's label, connectivity, and skip arrows are derived purely
-    from the params fields populated by the model constructor:
-      - params._incoming     (per-node edge lists)
-      - params._skip_connections  (residual sources per layer)
-      - params._is_resnet
-      - params.name
+    Build LayerInfo list from ``model.params``.
+ 
+    Connectivity for each layer is derived directly from
+    ``params._connections[i]``, the (out × in) bool matrix for transition i.
+    ``_connections[i][j, :]`` gives the active source indices for output node j
+    at layer i+1.  Skip arrows come from ``params._skip_connections``.
     """
     p = model.params
     layer_sizes  = p.layer_sizes
     n_layers = len(layer_sizes)
-    incoming = p._incoming          # [tgt_L][tgt_n] = [(src_L, src_n), ...]
+    connections  = p._connections       # list of (out × in) bool arrays, len = n_layers-1
     skip_srcs = p._skip_connections  # [j] = [src layer indices]
-    
     layers_info: list[LayerInfo] = []
     
     # for subtitle and label of layers
@@ -67,7 +64,7 @@ def _build_layers_info(model) -> tuple[list[LayerInfo], str]:
     for L in range(n_layers):
         sz = layer_sizes[L]
  
-        # label ---------------------------------------------------------------
+        # Label ---------------------------------------------------------------
         if L == 0:
             label = f"in\n{sz}n"
         elif L == n_layers - 1:
@@ -81,28 +78,29 @@ def _build_layers_info(model) -> tuple[list[LayerInfo], str]:
                 label = f"h{L}\n{sz}n"
         
         # connectivity and skip arrows for this layer -------------------------
-        if L == 0 or not incoming:
-            # input layer — no incoming edges
+        if L == 0 or not connections:
+            # input layer — no incoming transitions
             layers_info.append(LayerInfo(n_nodes=sz, label=label))
             continue
- 
-        # direct edges (from layer L-1) — sourced from _incoming
-        direct_per_node: list[list[int]] = [[src_n for src_L, src_n in incoming[L][n] if src_L == L - 1] for n in range(sz)]
         
-        # ?
-        def _make_conn(dp):
-            return lambda j, n_in: [s for s in dp[j] if s < n_in] if j < len(dp) else []
+        # Connectivity from _connections[L-1]: row j gives source indices -----
+        conn_matrix = connections[L - 1]   # shape (layer_sizes[L], layer_sizes[L-1])
         
-        # skip arrows — use _skip_connections[L] (source layer indices).
-        # _incoming only carries adjacent edges for dense/conv models, so
-        # we always derive skip arrows from _skip_connections directly.
+        def _make_conn(mat):
+            def _conn(j: int, n_in: int) -> list[int]:
+                if j >= mat.shape[0]:
+                    return []
+                return [int(s) for s in np.where(mat[j, :n_in])[0]]
+            return _conn
+        
+        # Skip arrows from _skip_connections ----------------------------------
         extra: list[tuple[int, list[int]]] = []
         if skip_srcs and L < len(skip_srcs):
             for src_L in sorted(skip_srcs[L]):
                 n_src = layer_sizes[src_L]
                 extra.append((src_L, list(range(min(n_src, sz)))))
         
-        layers_info.append(LayerInfo(n_nodes=sz, label=label, connectivity=_make_conn(direct_per_node), extra_srcs=extra))
+        layers_info.append(LayerInfo(n_nodes=sz, label=label, connectivity=_make_conn(conn_matrix), extra_srcs=extra))
     
     # subtitle
     has_skip = p._is_resnet
@@ -232,7 +230,7 @@ def make_animation(
         bottom-left  primary loss (params.loss_function)
         bottom-right secondary loss (params.loss_function2)
     
-    Title, loss labels, and save filename come from model.params.
+    Title and filename come from model.params.
     """
     p = model.params
     epoch_vals = np.arange(1, len(loss_history) + 1)

@@ -17,12 +17,12 @@ if __name__ == "__main__":
 
     # Shared config -----------------------------------------------------------
     H_N       = 4 # number of hidden / conv layers
-    N_N       = 5 # nodes per dense layer / filters per conv layer
+    N_N       = 6 # nodes per dense layer / filters per conv layer
     FUNC      = nn.Mish() # activation: nn.Tanh | nn.ReLU | nn.Sigmoid | nn.Softplus | nn.Softshrink | nn.Softsign | nn.Mish | etc.
     K_SIZE    = 3
     PADDING   = 1
     STRIDE    = 1
-    CONNECT   = 3
+    CONNECT   = 2
     
     params = ModelParams(
         name    = "",

@@ -5,16 +5,13 @@ import torch
 import torch.nn as nn
 import numpy as np
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 
 @dataclass
 class ModelParams:
     """
     Shared configuration for every model in models.py.
-
-    All fields that are common across FCNN, CNN, DenseResNet, ConvResNet and
-    CustomNet live here so that experiments can be defined once and passed
-    uniformly to any model constructor.
 
     Attributes
     ----------
@@ -28,9 +25,12 @@ class ModelParams:
 
     Graph state  *(populated by the model constructor — do not set manually)*
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    _incoming : list[list[list[tuple[int, int]]]]
-        ``_incoming[tgt_layer][tgt_node]`` = list of ``(src_layer, src_node)``
-        pairs that feed into that node.
+    _connections : list[np.ndarray]
+        ``_connections[i]`` is a boolean ``(layer_sizes[i+1] × layer_sizes[i])``
+        matrix.  Entry ``[out, in] = True`` iff that edge is active (not pruned).
+        Length = ``len(layer_sizes) - 1`` (one matrix per adjacent transition,
+        including the output head).  Populated by the model constructor.
+        For CustomNet, updated in-place by ``add_pruned()``.
     _pruned : set[tuple[int, int, int, int]]
         ``(src_layer, src_node, tgt_layer, tgt_node)`` edges whose weights are
         forced to 0.  Starts empty; updated via ``model.add_pruned()``.
@@ -82,35 +82,21 @@ class ModelParams:
     Computed
     --------
     label : str  *(read-only property)*
-
-    Examples
-    --------
-    >>> import torch.nn as nn
-    >>> from parameters import ModelParams, check_parameters
-    >>> p = ModelParams(
-    ...     name="FCNN",
-    ...     layer_sizes=[1, 64, 64, 1],
-    ...     learning_rate=1e-3,
-    ...     loss_function=nn.MSELoss(),
-    ...     activation_functions=[nn.Tanh(), nn.Tanh()],
-    ...     seed=42,
-    ...     shuffle=True,
-    ... )
-    >>> check_parameters(p)   # raises ValueError on bad input
-    >>> p.label
-    'FCNN | 4x64'
-    """
+     File-safe identifier: ``"{name}_{n_layers}x{max_width}_{seed}"``.
+     title : str  *(read-only property)*
+         Human-readable title for figure suptitle.
+     """
 
     # Architecture / identity -------------------------------------------------
     name:        str
     layer_sizes: list[int]
 
     # Graph state (populated by model constructors) ---------------------------
-    _incoming:         list[list[list[tuple[int, int]]]] = field(default_factory=list)
+    _connections:      list[np.ndarray]                  = field(default_factory=list)
     _pruned:           set[tuple[int, int, int, int]]    = field(default_factory=set)
     _skip_connections: list[list[int]]                   = field(default_factory=list)
     _is_resnet:        bool                              = False
-
+    
     # Training ----------------------------------------------------------------
     learning_rate:        float           = 1e-3
     gradient_clip:        float | None    = None
