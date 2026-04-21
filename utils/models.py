@@ -298,19 +298,10 @@ class CustomNet(nn.Module):
         skip_pairs: set[tuple[int, int]] = set()
         
         for src_layer, src_node, tgt_layer, tgt_node in nodes:
-            if tgt_layer <= src_layer:
-                raise ValueError(f"Edge ({src_layer},{src_node})→({tgt_layer},{tgt_node}): tgt_layer must be > src_layer.")
-            if tgt_layer >= self.n_layers:
-                raise ValueError(f"Edge targets layer {tgt_layer} but only {self.n_layers} layers are defined.")
-            if src_node >= self.layer_sizes[src_layer]:
-                raise ValueError(f"src_node {src_node} out of range for layer {src_layer} (size {self.layer_sizes[src_layer]}).")
-            if tgt_node >= self.layer_sizes[tgt_layer]:
-                raise ValueError(f"tgt_node {tgt_node} out of range for layer {tgt_layer} (size {self.layer_sizes[tgt_layer]}).")
+            self.check_connection(src_layer, src_node, tgt_layer, tgt_node)
             if tgt_layer == src_layer + 1:
                 adjacent_active.setdefault(src_layer, set()).add((tgt_node, src_node))
             else:
-                if self.layer_sizes[src_layer] != self.layer_sizes[tgt_layer]:
-                    raise ValueError(f"Skip edge ({src_layer})→({tgt_layer}): layer_sizes must match ({self.layer_sizes[src_layer]} ≠ {self.layer_sizes[tgt_layer]}).")
                 skip_pairs.add((src_layer, tgt_layer))
         
         # _connections[i]: (sizes[i+1] × sizes[i]) bool, from adjacent_active
@@ -366,15 +357,7 @@ class CustomNet(nn.Module):
     
     def add_pruned(self, src_layer: int, src_node: int, tgt_layer: int, tgt_node: int) -> None:
         """Mark an edge as pruned, updating weights, masks, and _connections."""
-        if tgt_layer <= src_layer:
-            raise ValueError(f"tgt_layer must be > {src_layer}.")
-        if src_layer >= self.n_layers - 1:
-            raise ValueError(f"src_layer {src_layer} out of range.")
-        if src_node >= self.layer_sizes[src_layer]:
-            raise ValueError(f"src_node {src_node} out of range.")
-        if tgt_node >= self.layer_sizes[tgt_layer]:
-            raise ValueError(f"tgt_node {tgt_node} out of range.")
-        
+        self.check_connection(self, src_layer, src_node, tgt_layer, tgt_node)
         edge = (src_layer, src_node, tgt_layer, tgt_node)
         self._pruned.add(edge)
         self.params._pruned.add(edge)
@@ -397,6 +380,24 @@ class CustomNet(nn.Module):
             if src_layer in self._skip_sources[tgt_layer]:
                 self._skip_sources[tgt_layer].remove(src_layer)
             self.params._skip_connections = self._skip_sources
+
+    def check_connection(self, src_layer: int, src_node: int, tgt_layer: int, tgt_node: int) -> None:
+        """Validate a connection tuple (src_layer, src_node, tgt_layer, tgt_node)."""
+        # Layer checks -----------------------------------------------------------------
+        if src_layer >= self.n_layers-1 or src_layer < 0:
+            raise ValueError(f"src_layer {src_layer} out of range [0, {self.n_layers-1}].")
+        if tgt_layer >= self.n_layers or tgt_layer < 0:
+            raise ValueError(f"tgt_layer {tgt_layer} out of range [0, {self.n_layers-1}].")
+        if tgt_layer <= src_layer:
+            raise ValueError(f"Invalid connection ({src_layer}->{tgt_layer}): must satisfy tgt_layer > src_layer")
+        # Node checks ------------------------------------------------------------------
+        if src_node < 0 or src_node >= self.layer_sizes[src_layer]:
+            raise ValueError(f"src_node {src_node} out of range for layer {src_layer} (size {self.layer_sizes[src_layer]})")
+        if tgt_node < 0 or tgt_node >= self.layer_sizes[tgt_layer]:
+            raise ValueError(f"tgt_node {tgt_node} out of range for layer {tgt_layer} (size {self.layer_sizes[tgt_layer]})")
+        # Skip connection check --------------------------------------------------------
+        if tgt_layer > src_layer + 1 and self.layer_sizes[src_layer] != self.layer_sizes[tgt_layer]:
+            raise ValueError(f"Skip edge ({src_layer})→({tgt_layer}) requires equal layer sizes ({self.layer_sizes[src_layer]} != {self.layer_sizes[tgt_layer]})")
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self._apply_masks()

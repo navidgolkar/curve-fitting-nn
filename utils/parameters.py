@@ -46,7 +46,41 @@ LOSS_FUNC_DICT = {
     7: nn.HingeEmbeddingLoss(),
     8: nn.SoftMarginLoss(),
     9: nn.MultiLabelSoftMarginLoss(),
+    # 10: nn.CrossEntropyLoss(),
+    # 11: nn.CTCLoss(),
+    # 12: nn.NLLLoss(),
+    # 13: nn.GaussianNLLLoss(),
+    # 14: nn.KLDivLoss(),
+    # 15: nn.BCELoss(),
+    # 16: nn.MarginRankingLoss(),
+    # 17: nn.HingeEmbeddingLoss(),
+    # 18: nn.MultiLabelMarginLoss(),
+    # 19: nn.MultiLabelSoftMarginLoss(),
+    # 20: nn.CosineEmbeddingLoss(),
+    # 21: nn.MultiMarginLoss(),
+    # 22: nn.TripletMarginLoss(),
+    # 23: nn.TripletMarginWithDistanceLoss(),
     }
+
+OPT_DICT = {
+    
+    1: lambda params, lr: torch.optim.Adam(params, lr=lr),
+    2: lambda params, lr: torch.optim.AdamW(params, lr=lr),
+    3: lambda params, lr: torch.optim.Adamax(params, lr=lr),
+    4: lambda params, lr: torch.optim.NAdam(params, lr=lr),
+    5: lambda params, lr: torch.optim.RMSprop(params, lr=lr),
+    6: lambda params, lr: torch.optim.RAdam(params, lr=lr),
+    7: lambda params, lr: torch.optim.Adafactor(params, lr=lr),
+    8: lambda params, lr: torch.optim.Rprop(params, lr=lr),
+    9: lambda params, lr: torch.optim.Adagrad(params, lr=lr),
+    10: lambda params, lr: torch.optim.Adadelta(params, lr=lr),
+    11: lambda params, lr: torch.optim.ASGD(params, lr=lr),
+    12: lambda params, lr: torch.optim.SGD(params, lr=lr),
+    # 13: lambda params, lr: torch.optim.LBFGS(params, lr=lr),
+    # 14: lambda params, lr: torch.optim.SparseAdam(params, lr=lr),
+    # 15: lambda params, lr: torch.optim.Muon(params, lr=lr),
+}
+
 @dataclass
 class ModelParams:
     """
@@ -137,15 +171,16 @@ class ModelParams:
     _is_resnet:        bool                              = False
     
     # Training ----------------------------------------------------------------
-    learning_rate:        float           = 1e-3
-    gradient_clip:        float | None    = None
-    loss_function:        nn.Module       = field(default_factory=nn.MSELoss)
-    loss_function2:       nn.Module       = field(default_factory=nn.BCEWithLogitsLoss)
-    tol:                  float | None    = None
-    max_epoch:            int             = 1000
-    activation_functions: list[nn.Module] = field(default_factory=list)
-    seed:                 int | None      = None
-    shuffle:              bool            = True
+    learning_rate:        float                 = 1e-3
+    gradient_clip:        float | None          = None
+    optimizer_function:   torch.optim.Optimizer = field(default_factory=torch.optim.Adam)
+    loss_function:        nn.Module             = field(default_factory=nn.MSELoss)
+    loss_function2:       nn.Module             = field(default_factory=nn.BCEWithLogitsLoss)
+    tol:                  float | None          = None
+    max_epoch:            int                   = 1000
+    activation_functions: list[nn.Module]       = field(default_factory=list)
+    seed:                 int | None            = None
+    shuffle:              bool                  = True
 
     # Runtime / logging -------------------------------------------------------
     device:      str  = "cpu"

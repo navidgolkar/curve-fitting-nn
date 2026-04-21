@@ -65,7 +65,7 @@ def train_model(
     y = y.to(device)
     apply_seed(params.seed) # Re-seed before training so repeated calls are reproducible
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=params.learning_rate)
+    optimizer = params.optimizer_function(model.parameters(), lr=params.learning_rate)
     loss_fn   = params.loss_function
     loss_fn2  = params.loss_function2
 

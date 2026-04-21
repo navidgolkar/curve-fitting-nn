@@ -2,26 +2,38 @@
 4 different configurations of neural networks used for curve fitting + visualization
 
 in bash using arguments you can change:
+#### 1. Structure Parameters:
+___
 -  --hn: Number of hidden layers [type=int, default=5]
 -  --nn: number of nodes at each hidden layer (the number of layers is equal at all hidden layers) [type=int, default=7]
 -  --func: Enter a number in the range (1-27) to select which activation function to use [type=int, default=17] (to see which number corresponds to what activation function, check paramters.py, 17 is Mish())
--  --loss1: Enter a number in the range (1-9) which loss unction to use for the training of models [type=int, default=2] (to see which number corresponds to what loss function, check paramters.py, 2 is Mean Squared Error[MSELoss()] and 6 is Binary Cross Entropy with Logits[BCEWithLogits()])
--  --loss2: Enter a number in the range (1-9) which loss unction to use for the second plot (this is not used for training) [type=int, default=6]
--  --lr: Enter learning rate value [type=float, default=1e-2]
--  --epoch: Number of epochs to run [type=int, default=1000]
--  --log: the results should should per how many epochs [type=int, default=10]
--  --grad_clip: Enter the value at which the gradient should be clipped to prevent explosion [type=float, default=100]
--  --seed: Seed number for random values [type=int, default=1]
--  --shuffle: Will shuffle input data of models [action='store_true']
--  --device: What device to use for pytorch [type=str, default="cpu"]
--  --verbose: Whether to show results in console [action='store_true']
--  --in_n: Number of input data [type=int, default=200]
--  --in_std: Standard deviation for input noise [type=float, default=1e-1]
--  --show: Whether to open figure files after running the code [action='store_true']
--  --file_type: What should be the file_type of saved figures (gif, png, jpeg) [type=str, default="gif"]
 -  --conv: (kernel size, padding, stride) for convolutional neural network [type=tuple[int, int, int], default=(3, 1, 1)]
 -  --connect: Number of connections for ConvResNet residual connections (connections start from layer+2) [type=int, default=1]
+#### 2. Training Hyper-parameters:
+___
+-  --loss1: Enter a number in the range (1-9) which loss function to use for the training of models [type=int, default=2] (to see which number corresponds to what loss function, check paramters.py, 2 is Mean Squared Error[MSELoss()] and 6 is Binary Cross Entropy with Logits[BCEWithLogits()])
+-  --opt: Enter a number in the range(1-12) which optimizer to use for training [type=int, default=1] (default is Adam)
+-  --lr: Enter learning rate value [type=float, default=1e-2]
+-  --grad_clip: Enter the value at which the gradient should be clipped to prevent explosion [type=float, default=100]
+-  --tol: Enter the tolerance for the network at which to stop training [type=float, default=1e-3]
+-  --epoch: Number of epochs to run [type=int, default=1000]
+-  --shuffle: Will shuffle input data of models [action="store_true"]
+-  --device: What device to use for pytorch [type=str, default="cpu"]
+#### 3. Outputs and Plots Parameters:
+___
+-  --loss2: Enter a number in the range (1-9) which loss unction to use for the second plot (this is not used for training) [type=int, default=6]
+-  --log: the results should be shown per how many epochs [type=int, default=10]
+-  --verbose: Whether to show results in console [action="store_true"]
+-  --show: Whether to open figure files after running the code [action="store_true"]
+-  --file_type: What should be the file_type of saved figures (gif, png, jpeg) [type=str, default="gif"]
 -  --name: added string at the end of each file for keeping track at running multiple runs [type=str, default=""]
+#### 4. Input Data Parameters:
+___
+-  --in_n: Number of input data [type=int, default=200]
+-  --in_std: Standard deviation for input noise [type=float, default=1e-1]
+#### 5. Seed variable influences both training parameters and input data parameters
+___
+-  --seed: Seed number for random values [type=int, default=1]
 
 # Plots
 - Top left: data vs prediction
@@ -47,7 +59,7 @@ to use you can clone this repository and install the packages needed in requirem
 - FCNN, albeit its dense configuration, converges best throughout all different hyperparameters
 
 ## To-do
-- add a heuristic approach for optimizing a Neural Network (CustomNet) by pruning connections e.g.: Grey Wolves Optimization, Genetic Algorith, etc.
+- add a heuristic approach for optimizing a Neural Network (CustomNet) by pruning connections e.g.: Grey Wolves Optimization, Genetic Algorithm, etc.
 
 ## Console Output
 ```
