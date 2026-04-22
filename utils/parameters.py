@@ -29,11 +29,11 @@ FUNC_DICT = {
         20: nn.Softsign(),
         21: nn.Tanh(),
         22: nn.Tanhshrink(),
-        23: nn.Threshold(threshold = 0, value = -0.1), # with threshold=0 and value=0 would be the same as ReLU 
-        24: nn.GLU(),
-        25: nn.Softmin(),
-        26: nn.Softmax(),
-        27: nn.LogSoftmax(),
+        23: nn.Threshold(threshold = 0, value = -0.1), # with threshold=0 and value=0 would be the same as ReLU
+        24: nn.Softmin(),
+        25: nn.Softmax(),
+        26: nn.LogSoftmax(),
+        # 27: nn.GLU(),
         }
 
 LOSS_FUNC_DICT = {
@@ -53,13 +53,11 @@ LOSS_FUNC_DICT = {
     # 14: nn.KLDivLoss(),
     # 15: nn.BCELoss(),
     # 16: nn.MarginRankingLoss(),
-    # 17: nn.HingeEmbeddingLoss(),
-    # 18: nn.MultiLabelMarginLoss(),
-    # 19: nn.MultiLabelSoftMarginLoss(),
-    # 20: nn.CosineEmbeddingLoss(),
-    # 21: nn.MultiMarginLoss(),
-    # 22: nn.TripletMarginLoss(),
-    # 23: nn.TripletMarginWithDistanceLoss(),
+    # 17: nn.MultiLabelMarginLoss(),
+    # 18: nn.CosineEmbeddingLoss(),
+    # 19: nn.MultiMarginLoss(),
+    # 20: nn.TripletMarginLoss(),
+    # 21: nn.TripletMarginWithDistanceLoss(),
     }
 
 OPT_DICT = {

@@ -6,27 +6,27 @@ in bash using arguments you can change:
 ___
 -  --hn: Number of hidden layers [type=int, default=5]
 -  --nn: number of nodes at each hidden layer (the number of layers is equal at all hidden layers) [type=int, default=7]
--  --func: Enter a number in the range (1-27) to select which activation function to use [type=int, default=17] (to see which number corresponds to what activation function, check paramters.py, 17 is Mish())
+-  --func: 1-26: Which activation function to use, default is Mish [type=int, default=17] (to see which number corresponds to what activation function check paramters.py)
 -  --conv: (kernel size, padding, stride) for convolutional neural network [type=tuple[int, int, int], default=(3, 1, 1)]
 -  --connect: Number of connections for ConvResNet residual connections (connections start from layer+2) [type=int, default=1]
 #### 2. Training Hyper-parameters:
 ___
--  --loss1: Enter a number in the range (1-9) which loss function to use for the training of models [type=int, default=2] (to see which number corresponds to what loss function, check paramters.py, 2 is Mean Squared Error[MSELoss()] and 6 is Binary Cross Entropy with Logits[BCEWithLogits()])
--  --opt: Enter a number in the range(1-12) which optimizer to use for training [type=int, default=1] (default is Adam)
+-  --loss1: 1-9: Which loss unction to use for the training of models, default is Mean Squared Loss [type=int, default=2] (to see which number corresponds to what loss function, check paramters.py)
+-  --opt: 1-12: Which optimizer to use for training, default is Adam [type=int, default=1] (to see which number corresponds to what optimizer function, check paramters.py)
 -  --lr: Enter learning rate value [type=float, default=1e-2]
 -  --grad_clip: Enter the value at which the gradient should be clipped to prevent explosion [type=float, default=100]
 -  --tol: Enter the tolerance for the network at which to stop training [type=float, default=1e-3]
 -  --epoch: Number of epochs to run [type=int, default=1000]
--  --shuffle: Will shuffle input data of models [action="store_true"]
--  --device: What device to use for pytorch [type=str, default="cpu"]
+-  --shuffle: Will shuffle input data of models [action='store_true']
+-  --device: What device to use for pytorch [type=str, default='cpu']
 #### 3. Outputs and Plots Parameters:
 ___
--  --loss2: Enter a number in the range (1-9) which loss unction to use for the second plot (this is not used for training) [type=int, default=6]
+-  --loss2: 1-9: Which loss unction to use for the second plot (this is not used for training), default is Binary Cross Entropy with Logits Loss [type=int, default=6] (to see which number corresponds to what loss function, check paramters.py)
 -  --log: the results should be shown per how many epochs [type=int, default=10]
--  --verbose: Whether to show results in console [action="store_true"]
--  --show: Whether to open figure files after running the code [action="store_true"]
--  --file_type: What should be the file_type of saved figures (gif, png, jpeg) [type=str, default="gif"]
--  --name: added string at the end of each file for keeping track at running multiple runs [type=str, default=""]
+-  --verbose: Whether to show results in console [action='store_true']
+-  --show: Whether to open figure files after running the code [action='store_true']
+-  --file_type: What should be the file_type of saved figures (gif, png, jpeg) [type=str, default='gif']
+-  --name: added string at the end of each file for keeping track at running multiple runs [type=str, default='']
 #### 4. Input Data Parameters:
 ___
 -  --in_n: Number of input data [type=int, default=200]
@@ -39,10 +39,10 @@ ___
 - Top left: data vs prediction
 - Top Right: the graph of network (red connections mean negative weights, blue means positive, and opacity is based on the absolute value of the weights, so smaller weight, lower opacity)
 - Bottom Left: Mean Squared Loss through epochs
-- Bottom Right: Binary Cross Entropy Loss through epochs
+- Bottom Right: Binary Cross Entropy Loss through epochs (this loss is calculated with the real y values that don't have noise)
 
 to use you can clone this repository and install the packages needed in requirements.txt and run main.py
-## $2e^{-x}(\sin(5x)+x\cos(5x))$
+#### The input data formula: $2e^{-x}(\sin(5x)+x\cos(5x))$
 | Dense Configuration | Convolutional Configuration |
 | :-------: | :-------: |
 | ![densenet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/FCNN_7x7_1.gif) | ![convnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CNN_7x7_1.gif) |
