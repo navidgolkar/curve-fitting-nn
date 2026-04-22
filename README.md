@@ -45,12 +45,12 @@ to use you can clone this repository and install the packages needed in requirem
 #### The input data formula: $2e^{-x}(\sin(5x)+x\cos(5x))$
 | Dense Configuration | Convolutional Configuration |
 | :-------: | :-------: |
-| ![densenet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/FCNN_7x7_1.gif) | ![convnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CNN_7x7_1.gif) |
-| ![denseresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/DenseResNet_7x7_1.gif) | ![convresnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/ConvResNet_7x7_1.gif) |
+| ![densenet](/saves/Mish/FCNN_7x7_1.gif) | ![convnet](/saves/Mish/CNN_7x7_1.gif) |
+| ![denseresnet](/saves/Mish/DenseResNet_7x7_1.gif) | ![convresnet](/saves/Mish/ConvResNet_7x7_1.gif) |
 
 | Custom Configuration |
 | :------------------: |
-| ![customnet](https://github.com/navidgolkar/curve-fitting-nn/blob/main/saves/Mish/CustomNet_7x7_1.gif) |
+| ![customnet](/saves/Mish/CustomNet_7x7_1.gif) |
 
 ## Observations
 - FCNN and DenseResNet change more uniformly through epochs because of their dense configuration, while CNN, ConvResNet and CustomNet change very "noisily"
