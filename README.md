@@ -59,7 +59,9 @@ to use you can clone this repository and install the packages needed in requirem
 - CustomNet, FCNN, and DenseResNet, albeit its dense configuration, converges best throughout all different hyperparameters
 
 ## To-do
-- ![Structure Optimization](https://github.com/navidgolkar/curve-fitting-nnwithopt): add a heuristic approach for optimizing a Neural Network (CustomNet) by pruning connections e.g.: Grey Wolves Optimization, Genetic Algorithm, etc.
+- change the skip connections so that they're defined node by node, so that in pruning they can be pruned independently if needed
+- ![Structure Optimization](https://github.com/navidgolkar/curve-fitting-nnwithopt): add a heuristic approach for optimizing a 
+Neural Network (CustomNet) by pruning connections e.g.: Grey Wolves Optimization, Genetic Algorithm, etc.
 - Optimizing CustomNet by checking different activation functions for each layer
 
 ## Console Output
